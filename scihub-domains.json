@@ -1,0 +1,87 @@
+{
+  "updated": "2026-05-30",
+  "note": "Ordered candidate Sci-Hub domains used by the userscript. The script opens the first domain and falls back to embedded domains if this file cannot be loaded. Discovery sources are scraped for sci-hub.* candidates, then candidates are probed and reachable domains are kept first.",
+  "sources": [
+    "https://lovescihub.wordpress.com",
+    "https://sci-hub.shop",
+    "https://www.sci-hub.pub",
+    "https://www.ooopn.com/tool/scihub/"
+  ],
+  "domains": [
+    "https://sci-hub.ru",
+    "https://sci-hub.st",
+    "https://sci-hub.su",
+    "https://sci-hub.red",
+    "https://sci-hub.box",
+    "https://sci-hub.shop",
+    "https://sci-hub.al",
+    "https://sci-hub.ee",
+    "https://sci-hub.mk",
+    "https://sci-hub.vg",
+    "https://sci-hub.ren",
+    "https://sci-hub.pub",
+    "https://sci-hub.jp",
+    "https://sci-hub.in",
+    "https://sci-hub.usualwant.com",
+    "https://sci-hub.sidesgame.com",
+    "https://sci-hub.se"
+  ],
+  "discovered": {
+    "https://lovescihub.wordpress.com": [
+      "https://sci-hub.ren",
+      "https://sci-hub.ee"
+    ],
+    "https://sci-hub.shop": [
+      "https://sci-hub.shop",
+      "https://sci-hub.al",
+      "https://sci-hub.mk",
+      "https://sci-hub.ee",
+      "https://sci-hub.vg",
+      "https://sci-hub.st"
+    ],
+    "https://www.sci-hub.pub": [
+      "https://sci-hub.pub",
+      "https://sci-hub.ru",
+      "https://sci-hub.st",
+      "https://sci-hub.su",
+      "https://sci-hub.box",
+      "https://sci-hub.red",
+      "https://sci-hub.al",
+      "https://sci-hub.mk",
+      "https://sci-hub.ee"
+    ],
+    "https://www.ooopn.com/tool/scihub/": [
+      "https://sci-hub.jp",
+      "https://sci-hub.st",
+      "https://sci-hub.su",
+      "https://sci-hub.ru",
+      "https://sci-hub.box",
+      "https://sci-hub.red",
+      "https://sci-hub.in",
+      "https://sci-hub.ren",
+      "https://sci-hub.vg",
+      "https://sci-hub.al",
+      "https://sci-hub.usualwant.com",
+      "https://sci-hub.sidesgame.com"
+    ]
+  },
+  "status": {
+    "https://sci-hub.ru": 200,
+    "https://sci-hub.st": 200,
+    "https://sci-hub.se": null,
+    "https://sci-hub.su": 200,
+    "https://sci-hub.red": 200,
+    "https://sci-hub.box": 200,
+    "https://sci-hub.shop": 200,
+    "https://sci-hub.al": 200,
+    "https://sci-hub.ee": 200,
+    "https://sci-hub.mk": 200,
+    "https://sci-hub.vg": 200,
+    "https://sci-hub.ren": 200,
+    "https://sci-hub.pub": 200,
+    "https://sci-hub.jp": 200,
+    "https://sci-hub.in": 200,
+    "https://sci-hub.usualwant.com": 200,
+    "https://sci-hub.sidesgame.com": 200
+  }
+}

@@ -1,13 +1,15 @@
-# PubMed Journal Metrics Userscript
+# Journal Metrics Userscript
 
-Tampermonkey userscript for PubMed. It displays journal impact factor, JCR quartile, CAS partition, Top, Review and warning tags on PubMed search result pages and article pages.
+Tampermonkey userscript for PubMed and common journal sites. It displays journal impact factor, JCR quartile, CAS partition, citation count, Top, Review and warning tags, then appends compact Unpaywall and Sci-Hub entries in the same metrics row.
 
 ## Files
 
 - `pubmed-journal-metrics.user.js`: install this in Tampermonkey.
 - `journal-data.sample.json`: small sample data for local testing and schema reference.
+- `scihub-domains.json`: ordered Sci-Hub candidate domain list loaded by the userscript.
 - `scripts/build-data-from-showjcr.py`: converts ShowJCR CSV files into the JSON consumed by the userscript.
 - `scripts/embed-data.py`: creates a full offline `.user.js` by embedding `journal-data.json`.
+- `scripts/update-scihub-domains.py`: probes configured Sci-Hub candidate domains and keeps reachable domains first.
 
 ## Install
 
@@ -22,6 +24,40 @@ Lightweight install, with journal data loaded from `journal-data.json`:
 Open either link in the browser, then let Tampermonkey install it. After installation, open PubMed, for example `https://pubmed.ncbi.nlm.nih.gov/?term=kidney+injury`.
 
 The script includes a tiny built-in sample dataset, so several common journals will render immediately. For real use, use either the offline build or a hosted JSON file.
+
+## Supported Sites
+
+The script has dedicated PubMed search/article handling and generic metadata handling for many journal pages. Current match rules include PubMed, PMC, Nature, Science, SpringerLink, ScienceDirect, Cell, The Lancet, JAMA Network, Oxford Academic, Wiley, ACS, Taylor & Francis, SAGE, PLOS, BMJ, Frontiers, MDPI, bioRxiv, medRxiv, NEJM, AHA Journals, JCI, PNAS, eLife, PeerJ, IOPscience, Royal Society, ASM, APS and Karger.
+
+Generic journal pages are matched through standard `citation_*`, `prism.*`, Dublin Core DOI/ISSN and journal-title metadata. If a page exposes DOI but no journal metadata, only the Sci-Hub entry may appear.
+
+## Citation Count
+
+The `Cited` chip is loaded asynchronously from public APIs:
+
+1. OpenAlex, using DOI or PMID.
+2. Semantic Scholar, as a fallback.
+
+Google Scholar is not used because it does not provide a stable official public API for this use case and direct scraping is fragile.
+
+## Sci-Hub Domains
+
+The userscript loads `scihub-domains.json` daily and opens the first configured domain with the page DOI or PMID. A GitHub Actions workflow probes the existing candidate domains daily and keeps reachable domains first. Discovery currently scrapes these candidate sources:
+
+- <https://lovescihub.wordpress.com>
+- <https://sci-hub.shop>
+- <https://www.sci-hub.pub>
+- <https://www.ooopn.com/tool/scihub/>
+
+There is no reliable official machine-readable Sci-Hub domain feed. New domains still need to be added to `scihub-domains.json` manually when the public domain set changes.
+
+## Unpaywall
+
+When a DOI is available, the metrics row also includes an `Unpaywall` button built as:
+
+```js
+var unpaywallBaseUrl = "https://unpaywall.org/";
+```
 
 ## Build Full Data From ShowJCR
 
@@ -83,6 +119,18 @@ Matching priority is ISSN first on article pages, then journal title and PubMed 
 
 ## Notes
 
-- The script is limited to `https://pubmed.ncbi.nlm.nih.gov/*`.
 - It does not send article titles, PMIDs or search terms to any backend.
+- DOI or PMID is sent to OpenAlex and, if needed, Semantic Scholar to fetch citation counts.
+- The Sci-Hub button is rendered only inside the metrics row created by this script; it does not add floating buttons or modify other page links.
 - JCR and CAS data licensing can be restrictive. Keep generated data for personal/internal use unless you have the right to redistribute it.
+
+## Acknowledgements
+
+This project was implemented with reference to:
+
+- [EasyPubMed](https://github.com/naivenaive/EasyPubMed): PubMed journal metrics UX, PubMed abbreviation mapping ideas and data-shaping references.
+- [ShowJCR](https://github.com/hitfyd/ShowJCR): JCR/CAS/warning CSV source format and local query model.
+- [Sci-Hub Button](https://greasyfork.org/zh-CN/scripts/370246-sci-hub-button): userscript pattern for opening a DOI/PMID through Sci-Hub.
+- [OpenAlex](https://openalex.org/) and [Semantic Scholar](https://www.semanticscholar.org/product/api): public citation-count sources used for the `Cited` chip.
+
+The implementation here is independent and scoped to this userscript.
