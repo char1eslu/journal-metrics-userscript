@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Probe configured Sci-Hub domains and keep reachable domains first."""
+"""Discover and probe Sci-Hub domains, keeping reachable domains first."""
 
 from __future__ import annotations
 
@@ -88,8 +88,10 @@ def main() -> None:
     discovered, by_source = ([], {})
     if not args.no_discovery:
         discovered, by_source = discover_domains(sources, args.timeout)
+        if not discovered:
+            raise SystemExit("No Sci-Hub domains discovered; leaving existing file unchanged.")
 
-    domains = unique((data.get("domains") or []) + discovered)
+    domains = unique(data.get("domains") or []) if args.no_discovery else unique(discovered)
     reachable = []
     unreachable = []
     statuses = {}

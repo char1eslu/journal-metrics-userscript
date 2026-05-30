@@ -71,7 +71,7 @@
     cacheMs: 7 * 24 * 60 * 60 * 1000,
     scihubCacheMs: 7 * 24 * 60 * 60 * 1000,
     citationsCacheMs: 7 * 24 * 60 * 60 * 1000,
-    fallbackScihubDomains: ["https://sci-hub.ru", "https://sci-hub.st", "https://sci-hub.se"],
+    fallbackScihubDomains: ["https://sci-hub.ren", "https://sci-hub.ee", "https://sci-hub.shop", "https://sci-hub.al", "https://sci-hub.mk", "https://sci-hub.vg", "https://sci-hub.st"],
     fallbackData: {
       meta: {
         name: "Journal Metrics sample data",

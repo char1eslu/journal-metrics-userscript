@@ -42,12 +42,12 @@ Google Scholar is not used because it does not provide a stable official public 
 
 ## Sci-Hub Domains
 
-The userscript loads `scihub-domains.json` weekly and opens the first configured domain with the page DOI or PMID. A GitHub Actions workflow probes the existing candidate domains every Monday and keeps reachable domains first. Discovery currently scrapes these candidate sources:
+The userscript loads `scihub-domains.json` weekly and opens the first configured domain with the page DOI or PMID. A GitHub Actions workflow discovers fresh candidates every Monday, probes that newly discovered set, and keeps reachable domains first. Discovery currently scrapes these candidate sources:
 
 - <https://lovescihub.wordpress.com>
 - <https://sci-hub.shop>
 
-There is no reliable official machine-readable Sci-Hub domain feed. New domains still need to be added to `scihub-domains.json` manually when the public domain set changes.
+There is no reliable official machine-readable Sci-Hub domain feed. The automated list is rebuilt from the discovery sources each week.
 
 Temporary override: from the Tampermonkey menu, use `Journal Metrics: Set Sci-Hub domains` to set comma- or newline-separated domains for the current browser. Use `Journal Metrics: Clear manual Sci-Hub domains` to return to the remote weekly list.
 

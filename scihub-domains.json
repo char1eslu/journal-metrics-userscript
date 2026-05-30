@@ -6,23 +6,13 @@
     "https://sci-hub.shop"
   ],
   "domains": [
-    "https://sci-hub.ru",
-    "https://sci-hub.st",
-    "https://sci-hub.su",
-    "https://sci-hub.red",
-    "https://sci-hub.box",
+    "https://sci-hub.ren",
+    "https://sci-hub.ee",
     "https://sci-hub.shop",
     "https://sci-hub.al",
-    "https://sci-hub.ee",
     "https://sci-hub.mk",
     "https://sci-hub.vg",
-    "https://sci-hub.ren",
-    "https://sci-hub.pub",
-    "https://sci-hub.jp",
-    "https://sci-hub.in",
-    "https://sci-hub.usualwant.com",
-    "https://sci-hub.sidesgame.com",
-    "https://sci-hub.se"
+    "https://sci-hub.st"
   ],
   "discovered": {
     "https://lovescihub.wordpress.com": [
@@ -39,22 +29,12 @@
     ]
   },
   "status": {
-    "https://sci-hub.ru": 200,
-    "https://sci-hub.st": 200,
-    "https://sci-hub.su": 200,
-    "https://sci-hub.red": 200,
-    "https://sci-hub.box": 200,
+    "https://sci-hub.ren": 200,
+    "https://sci-hub.ee": 200,
     "https://sci-hub.shop": 200,
     "https://sci-hub.al": 200,
-    "https://sci-hub.ee": 200,
     "https://sci-hub.mk": 200,
     "https://sci-hub.vg": 200,
-    "https://sci-hub.ren": 200,
-    "https://sci-hub.pub": 200,
-    "https://sci-hub.jp": 200,
-    "https://sci-hub.in": 200,
-    "https://sci-hub.usualwant.com": 200,
-    "https://sci-hub.sidesgame.com": 200,
-    "https://sci-hub.se": null
+    "https://sci-hub.st": 200
   }
 }
