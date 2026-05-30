@@ -5,8 +5,8 @@
 // @description  Show journal impact factor, JCR quartile, CAS partition and warning tags on PubMed.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
-// @downloadURL  https://raw.githubusercontent.com/char1eslu/pubmed-journal-metrics-userscript/main/pubmed-journal-metrics.user.js
-// @updateURL    https://raw.githubusercontent.com/char1eslu/pubmed-journal-metrics-userscript/main/pubmed-journal-metrics.user.js
+// @downloadURL  https://raw.githubusercontent.com/char1eslu/pubmed-journal-metrics-userscript/main/pubmed-journal-metrics.full.user.js
+// @updateURL    https://raw.githubusercontent.com/char1eslu/pubmed-journal-metrics-userscript/main/pubmed-journal-metrics.full.user.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue

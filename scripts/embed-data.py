@@ -26,7 +26,12 @@ def main() -> None:
     if PLACEHOLDER not in script:
         raise SystemExit(f"Could not find placeholder: {PLACEHOLDER}")
 
-    args.output.write_text(script.replace(PLACEHOLDER, replacement, 1), encoding="utf-8")
+    output_script = script.replace(PLACEHOLDER, replacement, 1)
+    output_script = output_script.replace(
+        "pubmed-journal-metrics.user.js",
+        "pubmed-journal-metrics.full.user.js",
+    )
+    args.output.write_text(output_script, encoding="utf-8")
     print(f"Wrote {args.output} ({args.output.stat().st_size} bytes)")
 
 
