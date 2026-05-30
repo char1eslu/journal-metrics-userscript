@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.2.2
+// @version      0.2.3
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -65,6 +65,8 @@
 // @match        https://www.jstage.jst.go.jp/article/*
 // @match        https://journals.lww.com/*/fulltext/*
 // @match        https://journals.lww.com/*/abstract/*
+// @match        https://journals.lww.com/*/Fulltext/*
+// @match        https://journals.lww.com/*/Abstract/*
 // @match        https://www.cochranelibrary.com/cdsr/doi/*
 // @match        https://www.hindawi.com/journals/*/*/*
 // @match        https://www.liebertpub.com/doi/*
@@ -871,6 +873,7 @@
   }
 
   function processArticlePage() {
+    if (location.hostname !== "pubmed.ncbi.nlm.nih.gov") return;
     const record = lookupJournal(getArticlePageQuery());
     if (!record) return;
 
@@ -932,7 +935,7 @@
 
   function processGenericArticlePage() {
     if (location.hostname === "pubmed.ncbi.nlm.nih.gov") return;
-    if (document.querySelector("article.full-docsum, .docsum-content, .article-citation")) return;
+    if (document.querySelector("article.full-docsum, .docsum-content")) return;
     if (document.body.dataset.pjmGenericProcessed === "1") return;
 
     const query = getGenericArticleQuery();
