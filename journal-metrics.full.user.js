@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.2.7
+// @version      0.3.0
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -14,7 +14,18 @@
 // @match        https://dx.doi.org/10.*
 // @match        https://search.crossref.org/*
 // @match        https://www.semanticscholar.org/paper/*
+// @match        https://www.semanticscholar.org/search*
 // @match        https://openalex.org/works/*
+// @match        https://openalex.org/search*
+// @match        https://www.webofscience.com/wos/*
+// @match        https://www.scopus.com/*
+// @match        https://www.dimensions.ai/*
+// @match        https://app.dimensions.ai/*
+// @match        https://www.lens.org/*
+// @match        https://pubpeer.com/*
+// @match        https://www.connectedpapers.com/*
+// @match        https://www.researchrabbit.ai/*
+// @match        https://www.litmaps.com/*
 // @match        https://*.nature.com/articles/*
 // @match        https://www.science.org/doi/*
 // @match        https://link.springer.com/article/*
@@ -84,10 +95,13 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
+// @grant        GM_setClipboard
 // @connect      raw.githubusercontent.com
 // @connect      gist.githubusercontent.com
 // @connect      api.openalex.org
 // @connect      api.semanticscholar.org
+// @connect      api.unpaywall.org
+// @connect      doi.org
 // @connect      localhost
 // @connect      127.0.0.1
 // @run-at       document-idle
@@ -108,9 +122,13 @@
     scihubDomainsCacheTimeKey: "journal-metrics:scihub-domains-time:v1",
     scihubManualDomainsKey: "journal-metrics:scihub-manual-domains:v1",
     citationsCacheKey: "journal-metrics:citations:v1",
+    unpaywallCacheKey: "journal-metrics:unpaywall:v1",
+    filterStateKey: "journal-metrics:filters:v1",
+    unpaywallEmail: "journal-metrics@example.com",
     cacheMs: 7 * 24 * 60 * 60 * 1000,
     scihubCacheMs: 7 * 24 * 60 * 60 * 1000,
     citationsCacheMs: 7 * 24 * 60 * 60 * 1000,
+    unpaywallCacheMs: 7 * 24 * 60 * 60 * 1000,
     fallbackScihubDomains: ["https://sci-hub.ren", "https://sci-hub.ee", "https://sci-hub.shop", "https://sci-hub.al", "https://sci-hub.mk", "https://sci-hub.vg", "https://sci-hub.st"],
     fallbackData: {
       meta: {
@@ -176,6 +194,7 @@
     indexes: null,
     scihubDomains: CONFIG.fallbackScihubDomains,
     processing: false,
+    filters: null,
   };
 
   const STYLE_ID = "pjm-style";
@@ -197,6 +216,24 @@
     const cleaned = String(value || "").toUpperCase().replace(/[^0-9X]/g, "");
     if (cleaned.length !== 8) return "";
     return `${cleaned.slice(0, 4)}-${cleaned.slice(4)}`;
+  }
+
+  function impactFactorValue(record) {
+    const raw = String(record?.if || record?.impactFactor || record?.IF || "").replace(/[<>]/g, "");
+    const value = Number.parseFloat(raw);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  function isQ1(record) {
+    return /Q1/i.test(String(record?.jcr || record?.jcrQuartile || ""));
+  }
+
+  function isCas1(record) {
+    return String(record?.cas || "").trim() === "1";
+  }
+
+  function isTop(record) {
+    return record?.top === true || String(record?.top).toLowerCase() === "true" || record?.top === "是";
   }
 
   function unique(values) {
@@ -366,6 +403,47 @@
     return `${CONFIG.unpaywallBaseUrl}${encodeURI(doi)}`;
   }
 
+  function unpaywallCacheKey(target) {
+    return normalizeDoi(target).toLowerCase();
+  }
+
+  function getUnpaywallCache() {
+    try {
+      return JSON.parse(GM_getValue(CONFIG.unpaywallCacheKey, "{}")) || {};
+    } catch {
+      return {};
+    }
+  }
+
+  function setUnpaywallCache(cache) {
+    GM_setValue(CONFIG.unpaywallCacheKey, JSON.stringify(cache));
+  }
+
+  async function fetchUnpaywall(target) {
+    const doi = normalizeDoi(target);
+    const key = unpaywallCacheKey(doi);
+    if (!doi || !key) return null;
+
+    const cache = getUnpaywallCache();
+    const cached = cache[key];
+    if (cached && Date.now() - cached.time < CONFIG.unpaywallCacheMs) return cached;
+
+    const url = `https://api.unpaywall.org/v2/${encodeURIComponent(doi)}?email=${encodeURIComponent(CONFIG.unpaywallEmail)}`;
+    const data = await loadJsonViaGm(url);
+    const location = data.best_oa_location || {};
+    const result = {
+      isOa: Boolean(data.is_oa),
+      status: data.oa_status || "",
+      url: location.url_for_pdf || location.url || buildUnpaywallUrl(doi),
+      hasPdf: Boolean(location.url_for_pdf),
+      hostType: location.host_type || "",
+      time: Date.now(),
+    };
+    cache[key] = result;
+    setUnpaywallCache(cache);
+    return result;
+  }
+
   function citationCacheKey(target) {
     return String(target || "").trim().toLowerCase();
   }
@@ -510,6 +588,26 @@
     });
   }
 
+  function loadTextViaGm(url, headers = {}) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: "GET",
+        url,
+        headers,
+        timeout: 20000,
+        onload(response) {
+          if (response.status >= 200 && response.status < 300) {
+            resolve(response.responseText || "");
+          } else {
+            reject(new Error(`HTTP ${response.status}`));
+          }
+        },
+        onerror: reject,
+        ontimeout: () => reject(new Error("Timed out while loading text.")),
+      });
+    });
+  }
+
   async function loadData() {
     if (CONFIG.embeddedData) return CONFIG.embeddedData;
 
@@ -594,6 +692,29 @@
     return normalized.length ? normalized : CONFIG.fallbackScihubDomains;
   }
 
+  function defaultFilters() {
+    return {
+      q1: false,
+      cas1: false,
+      top: false,
+      hideNonMatching: false,
+      minIf: "",
+    };
+  }
+
+  function loadFilters() {
+    try {
+      return { ...defaultFilters(), ...(JSON.parse(GM_getValue(CONFIG.filterStateKey, "{}")) || {}) };
+    } catch {
+      return defaultFilters();
+    }
+  }
+
+  function saveFilters(filters) {
+    STATE.filters = { ...defaultFilters(), ...filters };
+    GM_setValue(CONFIG.filterStateKey, JSON.stringify(STATE.filters));
+  }
+
   function registerMenuCommands() {
     if (typeof GM_registerMenuCommand !== "function") return;
 
@@ -612,6 +733,9 @@
       GM_setValue(CONFIG.scihubDomainsCacheTimeKey, "0");
       window.alert("Manual Sci-Hub domains cleared. Reload the page to use remote defaults.");
     });
+
+    GM_registerMenuCommand("Journal Metrics: Export page RIS", () => exportCurrentPage("ris"));
+    GM_registerMenuCommand("Journal Metrics: Export page BibTeX", () => exportCurrentPage("bibtex"));
   }
 
   function buildIndexes(data) {
@@ -745,6 +869,48 @@
         margin: 0 0 0 8px;
         vertical-align: middle;
       }
+      .pjm-filterbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        margin: 8px 0 12px;
+        padding: 6px 0;
+        color: #334155;
+        font-size: 12px;
+      }
+      .pjm-filterbar button,
+      .pjm-filterbar input {
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        background: #ffffff;
+        color: #334155;
+        font: inherit;
+        line-height: 1.3;
+        padding: 3px 7px;
+      }
+      .pjm-filterbar button {
+        cursor: pointer;
+        font-weight: 700;
+      }
+      .pjm-filterbar button.pjm-active {
+        border-color: #2563eb;
+        background: #eff6ff;
+        color: #1d4ed8;
+      }
+      .pjm-filterbar input {
+        width: 70px;
+      }
+      .pjm-filter-hidden {
+        display: none !important;
+      }
+      .pjm-filter-dim {
+        opacity: 0.38;
+      }
+      .pjm-filter-hit {
+        border-left: 3px solid #2563eb;
+        padding-left: 8px;
+      }
       .pjm-chip {
         display: inline-flex;
         align-items: center;
@@ -784,6 +950,21 @@
         color: #9a3412;
         text-decoration: none !important;
       }
+      .pjm-unpaywall.pjm-oa {
+        border-color: #16a34a;
+        background: #f0fdf4;
+        color: #166534;
+      }
+      .pjm-unpaywall.pjm-closed {
+        border-color: #94a3b8;
+        background: #f8fafc;
+        color: #64748b;
+      }
+      .pjm-unpaywall.pjm-pdf {
+        border-color: #dc2626;
+        background: #fef2f2;
+        color: #991b1b;
+      }
       .pjm-scihub:hover {
         background: #ccfbf1;
         color: #115e59;
@@ -816,7 +997,7 @@
   function unpaywallChip(target) {
     const url = buildUnpaywallUrl(target);
     if (!url) return "";
-    return `<a class="pjm-chip pjm-unpaywall" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="Open via Unpaywall">${escapeHtml("Unpaywall")}</a>`;
+    return `<a class="pjm-chip pjm-unpaywall pjm-loading" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" data-pjm-unpaywall-target="${escapeHtml(target)}" title="Checking Unpaywall">${escapeHtml("Unpaywall")}</a>`;
   }
 
   function citedChip(target) {
@@ -877,6 +1058,13 @@
     return `<span class="${BADGE_CLASS}${options.inline ? " pjm-inline" : ""}" title="${escapeHtml(record?.journal || "")}">${parts.join("")}${source}</span>`;
   }
 
+  function annotateMetrics(metrics, record, target) {
+    if (!metrics) return;
+    metrics.dataset.pjmRecord = record ? JSON.stringify(record) : "";
+    metrics.dataset.pjmTarget = String(target || "");
+    if (record?.journal) metrics.dataset.pjmJournal = record.journal;
+  }
+
   function insertMetrics(target, record, options = {}) {
     if (!target || target.querySelector?.(`.${BADGE_CLASS}`)) return;
     if (!record && !options.scihubTarget) return;
@@ -884,6 +1072,7 @@
     wrapper.innerHTML = renderMetrics(record, options);
     const metrics = wrapper.firstElementChild;
     if (!metrics) return;
+    annotateMetrics(metrics, record, options.scihubTarget);
 
     if (options.after) {
       target.insertAdjacentElement("afterend", metrics);
@@ -893,12 +1082,21 @@
       target.append(metrics);
     }
     hydrateCitationChips(metrics);
+    hydrateUnpaywallChips(metrics);
+    applyFilters();
   }
 
   function updateMetrics(metrics, record, options = {}) {
     if (!metrics) return;
-    metrics.outerHTML = renderMetrics(record, options);
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = renderMetrics(record, options);
+    const next = wrapper.firstElementChild;
+    if (!next) return;
+    annotateMetrics(next, record, options.scihubTarget);
+    metrics.replaceWith(next);
     hydrateCitationChips(options.root || document);
+    hydrateUnpaywallChips(options.root || document);
+    applyFilters();
   }
 
   function hydrateCitationChips(root = document) {
@@ -924,6 +1122,247 @@
         chipNode.innerHTML = "<strong>Cited</strong>NA";
         chipNode.title = "Citation count unavailable";
       });
+    }
+  }
+
+  function hydrateUnpaywallChips(root = document) {
+    const chips = root.querySelectorAll?.(".pjm-unpaywall[data-pjm-unpaywall-target]") || [];
+    for (const chipNode of chips) {
+      if (chipNode.dataset.pjmUnpaywallLoaded === "1") continue;
+      chipNode.dataset.pjmUnpaywallLoaded = "1";
+      const target = chipNode.dataset.pjmUnpaywallTarget;
+      fetchUnpaywall(target).then((result) => {
+        chipNode.classList.remove("pjm-loading", "pjm-oa", "pjm-closed", "pjm-pdf");
+        if (!result) {
+          chipNode.textContent = "Unpaywall";
+          chipNode.title = "Open via Unpaywall";
+          return;
+        }
+        if (result.url) chipNode.href = result.url;
+        if (result.hasPdf) {
+          chipNode.classList.add("pjm-pdf");
+          chipNode.textContent = "PDF";
+          chipNode.title = "Open available PDF from Unpaywall";
+        } else if (result.isOa) {
+          chipNode.classList.add("pjm-oa");
+          chipNode.textContent = result.status ? `OA ${result.status}` : "OA";
+          chipNode.title = result.hostType ? `Open OA copy (${result.hostType})` : "Open OA copy";
+        } else {
+          chipNode.classList.add("pjm-closed");
+          chipNode.textContent = "Closed";
+          chipNode.title = "No OA copy found by Unpaywall";
+        }
+      }).catch(() => {
+        chipNode.classList.remove("pjm-loading");
+        chipNode.textContent = "Unpaywall";
+        chipNode.title = "Open via Unpaywall";
+      });
+    }
+  }
+
+  function resultListRoot() {
+    if (location.hostname === "scholar.google.com") return document.querySelector("#gs_res_ccl_mid") || document.querySelector("#gs_res_ccl") || document.body;
+    if (location.hostname === "pubmed.ncbi.nlm.nih.gov") return document.querySelector(".search-results-chunks, .results-amount-container") || document.querySelector("main") || document.body;
+    return document.querySelector("main") || document.body;
+  }
+
+  function getFilterbarMount() {
+    if (location.hostname === "scholar.google.com") return document.querySelector("#gs_res_ccl_top") || document.querySelector("#gs_res_ccl") || document.body;
+    if (location.hostname === "pubmed.ncbi.nlm.nih.gov") return document.querySelector(".results-amount-container") || document.querySelector("main") || document.body;
+    return document.querySelector("main") || document.body;
+  }
+
+  function ensureFilterbar() {
+    if (!isResultListPage()) return;
+    if (document.getElementById("pjm-filterbar")) return;
+    const bar = document.createElement("div");
+    bar.id = "pjm-filterbar";
+    bar.className = "pjm-filterbar";
+    bar.innerHTML = `
+      <button type="button" data-pjm-filter="q1">Q1</button>
+      <button type="button" data-pjm-filter="cas1">CAS 1区</button>
+      <button type="button" data-pjm-filter="top">Top</button>
+      <button type="button" data-pjm-filter="hideNonMatching">Hide</button>
+      <label>IF >= <input type="number" step="0.1" min="0" data-pjm-filter="minIf"></label>
+      <button type="button" data-pjm-action="export-ris">RIS</button>
+      <button type="button" data-pjm-action="export-bibtex">BibTeX</button>
+      <button type="button" data-pjm-action="reset">Reset</button>
+    `;
+    bar.addEventListener("click", (event) => {
+      const button = event.target.closest("button");
+      if (!button) return;
+      const filter = button.dataset.pjmFilter;
+      const action = button.dataset.pjmAction;
+      if (filter) {
+        saveFilters({ ...STATE.filters, [filter]: !STATE.filters?.[filter] });
+        syncFilterbar();
+        applyFilters();
+      } else if (action === "reset") {
+        saveFilters(defaultFilters());
+        syncFilterbar();
+        applyFilters();
+      } else if (action === "export-ris") {
+        exportCurrentPage("ris");
+      } else if (action === "export-bibtex") {
+        exportCurrentPage("bibtex");
+      }
+    });
+    bar.addEventListener("input", (event) => {
+      const input = event.target.closest("input[data-pjm-filter='minIf']");
+      if (!input) return;
+      saveFilters({ ...STATE.filters, minIf: input.value });
+      applyFilters();
+    });
+    getFilterbarMount().insertAdjacentElement("afterend", bar);
+    syncFilterbar();
+  }
+
+  function syncFilterbar() {
+    const bar = document.getElementById("pjm-filterbar");
+    if (!bar) return;
+    const filters = STATE.filters || defaultFilters();
+    for (const key of ["q1", "cas1", "top", "hideNonMatching"]) {
+      bar.querySelector(`[data-pjm-filter="${key}"]`)?.classList.toggle("pjm-active", Boolean(filters[key]));
+    }
+    const input = bar.querySelector("input[data-pjm-filter='minIf']");
+    if (input && input.value !== String(filters.minIf || "")) input.value = filters.minIf || "";
+  }
+
+  function metricsMatchFilters(metrics) {
+    const filters = STATE.filters || defaultFilters();
+    if (!filters.q1 && !filters.cas1 && !filters.top && !filters.minIf) return true;
+    let record = null;
+    try {
+      record = JSON.parse(metrics.dataset.pjmRecord || "null");
+    } catch {
+      record = null;
+    }
+    if (!record) return false;
+    if (filters.q1 && !isQ1(record)) return false;
+    if (filters.cas1 && !isCas1(record)) return false;
+    if (filters.top && !isTop(record)) return false;
+    if (filters.minIf) {
+      const min = Number.parseFloat(filters.minIf);
+      const value = impactFactorValue(record);
+      if (Number.isFinite(min) && (value === null || value < min)) return false;
+    }
+    return true;
+  }
+
+  function resultItemForMetrics(metrics) {
+    return metrics.closest(".gs_r.gs_or, article.full-docsum, .docsum-content, .result-list-item, .search-result, .search-results-item, .paper, .cl-paper-row, .result, .item") || metrics.parentElement;
+  }
+
+  function applyFilters() {
+    if (!isResultListPage()) return;
+    const root = resultListRoot();
+    const filters = STATE.filters || defaultFilters();
+    for (const item of root.querySelectorAll(".pjm-filter-hidden, .pjm-filter-dim, .pjm-filter-hit")) {
+      item.classList.remove("pjm-filter-hidden", "pjm-filter-dim", "pjm-filter-hit");
+    }
+    if (!filters.q1 && !filters.cas1 && !filters.top && !filters.minIf) return;
+    for (const metrics of root.querySelectorAll(`.${BADGE_CLASS}`)) {
+      const item = resultItemForMetrics(metrics);
+      if (!item) continue;
+      const matched = metricsMatchFilters(metrics);
+      item.classList.toggle("pjm-filter-hit", matched);
+      item.classList.toggle(filters.hideNonMatching ? "pjm-filter-hidden" : "pjm-filter-dim", !matched);
+    }
+  }
+
+  function currentPageItems() {
+    const metricsNodes = [...document.querySelectorAll(`.${BADGE_CLASS}`)];
+    return metricsNodes.map((metrics, index) => {
+      const item = resultItemForMetrics(metrics);
+      let record = null;
+      try {
+        record = JSON.parse(metrics.dataset.pjmRecord || "null");
+      } catch {
+        record = null;
+      }
+      const title = firstText(
+        item?.querySelector?.(".gs_rt")?.textContent,
+        item?.querySelector?.(".docsum-title")?.textContent,
+        item?.querySelector?.("h1, h2, h3")?.textContent,
+        document.querySelector("h1")?.textContent
+      ).replace(/^(?:\[[^\]]+\]\s*)+/, "").trim();
+      const meta = item?.querySelector?.(".gs_a, .docsum-journal-citation, .docsum-citation")?.textContent || "";
+      const doi = normalizeDoi(metrics.dataset.pjmTarget || getArticleDoi(item || document));
+      const pmid = getPubmedId(item || document);
+      return {
+        index,
+        title,
+        journal: record?.journal || metrics.dataset.pjmJournal || maybeJournalFromScholarMeta(meta),
+        year: (meta.match(/\b(19|20)\d{2}\b/) || [])[0] || "",
+        doi,
+        pmid,
+        url: item?.querySelector?.("a[href]")?.href || location.href,
+        record,
+      };
+    }).filter((item) => item.title || item.doi || item.pmid || item.journal);
+  }
+
+  function risEscape(value) {
+    return String(value || "").replace(/\r?\n+/g, " ").trim();
+  }
+
+  function fallbackRis(item) {
+    const lines = ["TY  - JOUR"];
+    if (item.title) lines.push(`TI  - ${risEscape(item.title)}`);
+    if (item.journal) lines.push(`JO  - ${risEscape(item.journal)}`);
+    if (item.year) lines.push(`PY  - ${risEscape(item.year)}`);
+    if (item.doi) lines.push(`DO  - ${risEscape(item.doi)}`);
+    if (item.pmid) lines.push(`ID  - PMID:${risEscape(item.pmid)}`);
+    if (item.url) lines.push(`UR  - ${risEscape(item.url)}`);
+    lines.push("ER  -");
+    return lines.join("\n");
+  }
+
+  function bibKey(item) {
+    const base = normalizeKey(item.title || item.journal || item.doi || `item-${item.index + 1}`)
+      .split(" ")
+      .slice(0, 5)
+      .join("")
+      .toLowerCase();
+    return base || `item${item.index + 1}`;
+  }
+
+  function fallbackBibtex(item) {
+    const fields = [];
+    if (item.title) fields.push(`  title = {${item.title}}`);
+    if (item.journal) fields.push(`  journal = {${item.journal}}`);
+    if (item.year) fields.push(`  year = {${item.year}}`);
+    if (item.doi) fields.push(`  doi = {${item.doi}}`);
+    if (item.url) fields.push(`  url = {${item.url}}`);
+    return `@article{${bibKey(item)},\n${fields.join(",\n")}\n}`;
+  }
+
+  async function exportCurrentPage(format) {
+    const items = currentPageItems();
+    if (!items.length) {
+      window.alert("No Journal Metrics items found on this page.");
+      return;
+    }
+    const chunks = [];
+    for (const item of items) {
+      if (item.doi) {
+        const accept = format === "ris" ? "application/x-research-info-systems" : "application/x-bibtex";
+        try {
+          const citation = await loadTextViaGm(`https://doi.org/${encodeURI(item.doi)}`, { Accept: accept });
+          chunks.push(citation.trim() || (format === "ris" ? fallbackRis(item) : fallbackBibtex(item)));
+          continue;
+        } catch {
+          // Fall back to locally generated citation text.
+        }
+      }
+      chunks.push(format === "ris" ? fallbackRis(item) : fallbackBibtex(item));
+    }
+    const text = chunks.join(format === "ris" ? "\n\n" : "\n\n");
+    if (typeof GM_setClipboard === "function") {
+      GM_setClipboard(text, "text");
+      window.alert(`Copied ${items.length} ${format.toUpperCase()} records.`);
+    } else {
+      window.prompt(`Copy ${format.toUpperCase()} records`, text);
     }
   }
 
@@ -1003,9 +1442,11 @@
 
   function isResultListPage() {
     if (location.hostname === "scholar.google.com") return true;
+    if (location.hostname === "www.semanticscholar.org" && location.pathname.startsWith("/search")) return true;
     if (location.hostname === "search.crossref.org") return true;
     if (location.hostname === "europepmc.org" && location.pathname.startsWith("/search")) return true;
     if (location.hostname === "openalex.org" && !location.pathname.startsWith("/works/")) return true;
+    if (location.hostname === "pubmed.ncbi.nlm.nih.gov" && document.querySelector("article.full-docsum, .docsum-content")) return true;
     return false;
   }
 
@@ -1108,11 +1549,13 @@
     STATE.processing = true;
     try {
       addStyle();
+      ensureFilterbar();
       processSearchResults();
       processGoogleScholarResults();
       processGenericResultLists();
       processArticlePage();
       processGenericArticlePage();
+      applyFilters();
     } finally {
       STATE.processing = false;
     }
@@ -1131,6 +1574,7 @@
     const [data, scihubDomains] = await Promise.all([loadData(), loadScihubDomains()]);
     STATE.data = data;
     STATE.scihubDomains = scihubDomains;
+    STATE.filters = loadFilters();
     STATE.indexes = buildIndexes(STATE.data);
     processPage();
     observePageChanges();

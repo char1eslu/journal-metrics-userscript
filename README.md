@@ -1,6 +1,6 @@
 # Journal Metrics Userscript
 
-Tampermonkey userscript for common academic and journal sites. It displays journal impact factor, JCR quartile, CAS partition, citation count, Top, Review and warning tags, then appends compact Unpaywall and Sci-Hub entries in the same metrics row.
+Tampermonkey userscript for common academic and journal sites. It displays journal impact factor, JCR quartile, CAS partition, citation count, Top, Review and warning tags, then appends compact OA/PDF, Sci-Hub and export/filter tools.
 
 ## Files
 
@@ -27,9 +27,20 @@ The script includes a tiny built-in sample dataset, so several common journals w
 
 ## Supported Sites
 
-The script has dedicated PubMed and Google Scholar result handling, plus generic metadata handling for many journal pages. Current match rules include PubMed/PMC, Europe PMC, Google Scholar, DOI.org, Crossref Search, Semantic Scholar, OpenAlex, Nature, Science, Springer/SpringerOpen/BMC, ScienceDirect, Cell, The Lancet, JAMA Network, Oxford Academic, Wiley, ACM, IEEE Xplore, ACS, RSC, AIP, Taylor & Francis, SAGE, PLOS, BMJ, Frontiers, MDPI, bioRxiv, medRxiv, NEJM, AHA Journals, JCI, PNAS, APS, eLife, PeerJ, IOPscience, Royal Society, ASM, APS Physiology, Karger, Cambridge Core, De Gruyter/De Gruyter Brill, Emerald, World Scientific, Annual Reviews, University of Chicago Press, J-STAGE, LWW abstract/fulltext pages, Cochrane Library, Hindawi, Mary Ann Liebert, ATS Journals, Future Medicine, Thieme, ResearchGate, arXiv, SSRN and Preprints.org.
+The script has dedicated PubMed and Google Scholar result handling, plus generic metadata handling for many journal pages. Current match rules include PubMed/PMC, Europe PMC, Google Scholar, DOI.org, Crossref Search, Semantic Scholar, OpenAlex, Web of Science, Scopus, Dimensions, Lens, PubPeer, Connected Papers, ResearchRabbit, Litmaps, Nature, Science, Springer/SpringerOpen/BMC, ScienceDirect, Cell, The Lancet, JAMA Network, Oxford Academic, Wiley, ACM, IEEE Xplore, ACS, RSC, AIP, Taylor & Francis, SAGE, PLOS, BMJ, Frontiers, MDPI, bioRxiv, medRxiv, NEJM, AHA Journals, JCI, PNAS, APS, eLife, PeerJ, IOPscience, Royal Society, ASM, APS Physiology, Karger, Cambridge Core, De Gruyter/De Gruyter Brill, Emerald, World Scientific, Annual Reviews, University of Chicago Press, J-STAGE, LWW abstract/fulltext pages, Cochrane Library, Hindawi, Mary Ann Liebert, ATS Journals, Future Medicine, Thieme, ResearchGate, arXiv, SSRN and Preprints.org.
 
 Generic journal pages are matched through standard `citation_*`, `prism.*`, Dublin Core, JSON-LD DOI/ISSN and journal-title metadata. If a page exposes DOI but no journal metadata, only the `Cited`, Unpaywall and Sci-Hub entries may appear.
+
+## Result Tools
+
+On supported result pages, the toolbar can highlight or hide records by:
+
+- JCR Q1
+- CAS 1区
+- Top journal
+- Minimum impact factor
+
+The same toolbar can export detected page items as RIS or BibTeX. DOI-backed exports try citation content negotiation first and fall back to locally generated RIS or BibTeX when needed.
 
 ## Citation Count
 
@@ -53,7 +64,7 @@ Temporary override: from the Tampermonkey menu, use `Journal Metrics: Set Sci-Hu
 
 ## Unpaywall
 
-When a DOI is available, the metrics row also includes an `Unpaywall` button built as:
+When a DOI is available, the metrics row also includes an Unpaywall-based OA button. It checks the Unpaywall API and changes the chip to `PDF`, `OA <status>`, or `Closed` when a DOI result is available. The base fallback URL is:
 
 ```js
 var unpaywallBaseUrl = "https://unpaywall.org/";
