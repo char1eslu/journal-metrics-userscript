@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.0
+// @version      0.3.1
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -876,8 +876,31 @@
         gap: 6px;
         margin: 8px 0 12px;
         padding: 6px 0;
+        width: 100%;
+        box-sizing: border-box;
         color: #334155;
         font-size: 12px;
+      }
+      .pjm-filterbar-group {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+      }
+      .pjm-filterbar-spacer {
+        flex: 0 0 8px;
+        height: 1px;
+      }
+      .pjm-filterbar-pubmed {
+        margin: 6px 0 18px;
+        padding: 7px 9px;
+        border: 1px solid #d7dee8;
+        border-radius: 4px;
+        background: #ffffff;
+        box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+      }
+      .pjm-filterbar-pubmed .pjm-filterbar-spacer {
+        flex: 1 1 auto;
       }
       .pjm-filterbar button,
       .pjm-filterbar input {
@@ -898,8 +921,27 @@
         background: #eff6ff;
         color: #1d4ed8;
       }
-      .pjm-filterbar input {
+      .pjm-filterbar label {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin: 0;
+        white-space: nowrap;
+        font-weight: 700;
+      }
+      .pjm-filterbar input[type="number"] {
         width: 70px;
+        height: 27px;
+        box-sizing: border-box;
+        padding: 2px 5px;
+      }
+      .pjm-filterbar-pubmed input[type="number"] {
+        width: 56px;
+      }
+      @media (max-width: 700px) {
+        .pjm-filterbar-pubmed .pjm-filterbar-spacer {
+          display: none;
+        }
       }
       .pjm-filter-hidden {
         display: none !important;
@@ -1162,14 +1204,24 @@
 
   function resultListRoot() {
     if (location.hostname === "scholar.google.com") return document.querySelector("#gs_res_ccl_mid") || document.querySelector("#gs_res_ccl") || document.body;
-    if (location.hostname === "pubmed.ncbi.nlm.nih.gov") return document.querySelector(".search-results-chunks, .results-amount-container") || document.querySelector("main") || document.body;
+    if (location.hostname === "pubmed.ncbi.nlm.nih.gov") return document.querySelector(".search-results-chunks") || document.querySelector("main") || document.body;
     return document.querySelector("main") || document.body;
   }
 
   function getFilterbarMount() {
     if (location.hostname === "scholar.google.com") return document.querySelector("#gs_res_ccl_top") || document.querySelector("#gs_res_ccl") || document.body;
-    if (location.hostname === "pubmed.ncbi.nlm.nih.gov") return document.querySelector(".results-amount-container") || document.querySelector("main") || document.body;
     return document.querySelector("main") || document.body;
+  }
+
+  function placeFilterbar(bar) {
+    if (location.hostname === "pubmed.ncbi.nlm.nih.gov") {
+      const list = document.querySelector(".search-results-chunks");
+      if (list) {
+        list.insertAdjacentElement("beforebegin", bar);
+        return;
+      }
+    }
+    getFilterbarMount().insertAdjacentElement("afterend", bar);
   }
 
   function ensureFilterbar() {
@@ -1177,16 +1229,21 @@
     if (document.getElementById("pjm-filterbar")) return;
     const bar = document.createElement("div");
     bar.id = "pjm-filterbar";
-    bar.className = "pjm-filterbar";
+    bar.className = `pjm-filterbar${location.hostname === "pubmed.ncbi.nlm.nih.gov" ? " pjm-filterbar-pubmed" : ""}`;
     bar.innerHTML = `
-      <button type="button" data-pjm-filter="q1">Q1</button>
-      <button type="button" data-pjm-filter="cas1">CAS 1区</button>
-      <button type="button" data-pjm-filter="top">Top</button>
-      <button type="button" data-pjm-filter="hideNonMatching">Hide</button>
-      <label>IF >= <input type="number" step="0.1" min="0" data-pjm-filter="minIf"></label>
-      <button type="button" data-pjm-action="export-ris">RIS</button>
-      <button type="button" data-pjm-action="export-bibtex">BibTeX</button>
-      <button type="button" data-pjm-action="reset">Reset</button>
+      <span class="pjm-filterbar-group">
+        <button type="button" data-pjm-filter="q1">Q1</button>
+        <button type="button" data-pjm-filter="cas1">CAS 1区</button>
+        <button type="button" data-pjm-filter="top">Top</button>
+        <button type="button" data-pjm-filter="hideNonMatching">Hide</button>
+        <label>IF >= <input type="number" step="0.1" min="0" data-pjm-filter="minIf"></label>
+      </span>
+      <span class="pjm-filterbar-spacer" aria-hidden="true"></span>
+      <span class="pjm-filterbar-group">
+        <button type="button" data-pjm-action="export-ris">RIS</button>
+        <button type="button" data-pjm-action="export-bibtex">BibTeX</button>
+        <button type="button" data-pjm-action="reset">Reset</button>
+      </span>
     `;
     bar.addEventListener("click", (event) => {
       const button = event.target.closest("button");
@@ -1213,7 +1270,7 @@
       saveFilters({ ...STATE.filters, minIf: input.value });
       applyFilters();
     });
-    getFilterbarMount().insertAdjacentElement("afterend", bar);
+    placeFilterbar(bar);
     syncFilterbar();
   }
 
