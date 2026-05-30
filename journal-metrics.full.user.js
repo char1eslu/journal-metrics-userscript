@@ -43,6 +43,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_registerMenuCommand
 // @connect      raw.githubusercontent.com
 // @connect      gist.githubusercontent.com
 // @connect      api.openalex.org
@@ -65,9 +66,10 @@
     cacheTimeKey: "journal-metrics:data-time:v1",
     scihubDomainsCacheKey: "journal-metrics:scihub-domains:v1",
     scihubDomainsCacheTimeKey: "journal-metrics:scihub-domains-time:v1",
+    scihubManualDomainsKey: "journal-metrics:scihub-manual-domains:v1",
     citationsCacheKey: "journal-metrics:citations:v1",
     cacheMs: 7 * 24 * 60 * 60 * 1000,
-    scihubCacheMs: 24 * 60 * 60 * 1000,
+    scihubCacheMs: 7 * 24 * 60 * 60 * 1000,
     citationsCacheMs: 7 * 24 * 60 * 60 * 1000,
     fallbackScihubDomains: ["https://sci-hub.ru", "https://sci-hub.st", "https://sci-hub.se"],
     fallbackData: {
@@ -381,6 +383,15 @@
   }
 
   async function loadScihubDomains() {
+    const manualRaw = GM_getValue(CONFIG.scihubManualDomainsKey, "");
+    if (manualRaw) {
+      try {
+        return normalizeDomainList(JSON.parse(manualRaw));
+      } catch {
+        GM_setValue(CONFIG.scihubManualDomainsKey, "");
+      }
+    }
+
     const now = Date.now();
     const cachedRaw = GM_getValue(CONFIG.scihubDomainsCacheKey, "");
     const cachedTime = Number(GM_getValue(CONFIG.scihubDomainsCacheTimeKey, 0));
@@ -420,6 +431,26 @@
       return /^https?:\/\//i.test(text) ? text : `https://${text}`;
     }));
     return normalized.length ? normalized : CONFIG.fallbackScihubDomains;
+  }
+
+  function registerMenuCommands() {
+    if (typeof GM_registerMenuCommand !== "function") return;
+
+    GM_registerMenuCommand("Journal Metrics: Set Sci-Hub domains", () => {
+      const current = STATE.scihubDomains.join(", ");
+      const input = window.prompt("Sci-Hub domains, comma or newline separated. First domain is used first.", current);
+      if (input === null) return;
+      const domains = normalizeDomainList(input.split(/[\n,]+/));
+      GM_setValue(CONFIG.scihubManualDomainsKey, JSON.stringify(domains));
+      STATE.scihubDomains = domains;
+      window.alert(`Sci-Hub domains updated:\n${domains.join("\n")}`);
+    });
+
+    GM_registerMenuCommand("Journal Metrics: Clear manual Sci-Hub domains", () => {
+      GM_setValue(CONFIG.scihubManualDomainsKey, "");
+      GM_setValue(CONFIG.scihubDomainsCacheTimeKey, "0");
+      window.alert("Manual Sci-Hub domains cleared. Reload the page to use remote defaults.");
+    });
   }
 
   function buildIndexes(data) {
@@ -784,6 +815,7 @@
   }
 
   async function main() {
+    registerMenuCommands();
     const [data, scihubDomains] = await Promise.all([loadData(), loadScihubDomains()]);
     STATE.data = data;
     STATE.scihubDomains = scihubDomains;

@@ -15,8 +15,6 @@ from pathlib import Path
 DISCOVERY_SOURCES = [
     "https://lovescihub.wordpress.com",
     "https://sci-hub.shop",
-    "https://www.sci-hub.pub",
-    "https://www.ooopn.com/tool/scihub/",
 ]
 
 
@@ -86,7 +84,7 @@ def main() -> None:
     args = parser.parse_args()
 
     data = json.loads(args.file.read_text(encoding="utf-8"))
-    sources = data.get("sources") or DISCOVERY_SOURCES
+    sources = DISCOVERY_SOURCES
     discovered, by_source = ([], {})
     if not args.no_discovery:
         discovered, by_source = discover_domains(sources, args.timeout)
