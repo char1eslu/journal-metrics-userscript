@@ -1,0 +1,57 @@
+{
+  "meta": {
+    "name": "PubMed Journal Metrics sample data",
+    "updated": "2026-05-30",
+    "source": "Small hand-checkable sample. Generate the full file with scripts/build-data-from-showjcr.py."
+  },
+  "journals": [
+    {
+      "journal": "NATURE REVIEWS NEPHROLOGY",
+      "aliases": ["Nat Rev Nephrol", "Nature reviews nephrology"],
+      "issn": ["1759-5061", "1759-507X"],
+      "if": "34.5",
+      "jcr": "Q1",
+      "cas": "1",
+      "casCategory": "医学",
+      "top": true,
+      "review": true,
+      "warning": ""
+    },
+    {
+      "journal": "JOURNAL OF THE AMERICAN SOCIETY OF NEPHROLOGY",
+      "aliases": ["J Am Soc Nephrol", "Journal of the American Society of Nephrology"],
+      "issn": ["1046-6673", "1533-3450"],
+      "if": "14.8",
+      "jcr": "Q1",
+      "cas": "1",
+      "casCategory": "医学",
+      "top": true,
+      "review": false,
+      "warning": ""
+    },
+    {
+      "journal": "LANCET",
+      "aliases": ["Lancet", "The Lancet"],
+      "issn": ["0140-6736", "1474-547X"],
+      "if": "98.4",
+      "jcr": "Q1",
+      "cas": "1",
+      "casCategory": "医学",
+      "top": true,
+      "review": false,
+      "warning": ""
+    },
+    {
+      "journal": "BRITISH POULTRY SCIENCE",
+      "aliases": ["Br Poult Sci", "British poultry science"],
+      "issn": ["0007-1668", "1466-1799"],
+      "if": "1.8",
+      "jcr": "Q3",
+      "cas": "4",
+      "casCategory": "农林科学",
+      "top": false,
+      "review": false,
+      "warning": ""
+    }
+  ]
+}
