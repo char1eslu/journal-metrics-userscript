@@ -1,10 +1,10 @@
 # Journal Metrics Userscript
 
-Tampermonkey userscript for PubMed and common journal sites. It displays journal impact factor, JCR quartile, CAS partition, citation count, Top, Review and warning tags, then appends compact Unpaywall and Sci-Hub entries in the same metrics row.
+Tampermonkey userscript for common academic and journal sites. It displays journal impact factor, JCR quartile, CAS partition, citation count, Top, Review and warning tags, then appends compact Unpaywall and Sci-Hub entries in the same metrics row.
 
 ## Files
 
-- `pubmed-journal-metrics.user.js`: install this in Tampermonkey.
+- `journal-metrics.user.js`: install this in Tampermonkey.
 - `journal-data.sample.json`: small sample data for local testing and schema reference.
 - `scihub-domains.json`: ordered Sci-Hub candidate domain list loaded by the userscript.
 - `scripts/build-data-from-showjcr.py`: converts ShowJCR CSV files into the JSON consumed by the userscript.
@@ -15,13 +15,13 @@ Tampermonkey userscript for PubMed and common journal sites. It displays journal
 
 Recommended full offline install:
 
-<https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/pubmed-journal-metrics.full.user.js>
+<https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/journal-metrics.full.user.js>
 
 Lightweight install, with journal data loaded from `journal-data.json`:
 
-<https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/pubmed-journal-metrics.user.js>
+<https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/journal-metrics.user.js>
 
-Open either link in the browser, then let Tampermonkey install it. After installation, open PubMed, for example `https://pubmed.ncbi.nlm.nih.gov/?term=kidney+injury`.
+Open either link in the browser, then let Tampermonkey install it. After installation, open a supported academic page such as PubMed, Nature, ScienceDirect or a journal DOI page.
 
 The script includes a tiny built-in sample dataset, so several common journals will render immediately. For real use, use either the offline build or a hosted JSON file.
 
@@ -84,12 +84,12 @@ After generating `journal-data.json`, run:
 
 ```bash
 python3 scripts/embed-data.py \
-  --script pubmed-journal-metrics.user.js \
+  --script journal-metrics.user.js \
   --data journal-data.json \
-  --output pubmed-journal-metrics.full.user.js
+  --output journal-metrics.full.user.js
 ```
 
-Install `pubmed-journal-metrics.full.user.js` in Tampermonkey. This is larger, but it does not need a remote data URL.
+Install `journal-metrics.full.user.js` in Tampermonkey. This is larger, but it does not need a remote data URL.
 
 ## Data Schema
 

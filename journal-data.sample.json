@@ -1,6 +1,6 @@
 {
   "meta": {
-    "name": "PubMed Journal Metrics sample data",
+    "name": "Journal Metrics sample data",
     "updated": "2026-05-30",
     "source": "Small hand-checkable sample. Generate the full file with scripts/build-data-from-showjcr.py."
   },

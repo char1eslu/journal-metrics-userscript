@@ -168,7 +168,7 @@ def build_data(showjcr_dir: Path, pubmed_abb: Path | None = None) -> dict:
     journals.sort(key=lambda item: item["journal"])
     return {
         "meta": {
-            "name": "PubMed Journal Metrics data",
+            "name": "Journal Metrics data",
             "updated": "2026-05-30",
             "source": "Generated from ShowJCR CSV files: JCR2024, FQBJCR2025, GJQKYJMD2025.",
         },

@@ -28,8 +28,8 @@ def main() -> None:
 
     output_script = script.replace(PLACEHOLDER, replacement, 1)
     output_script = output_script.replace(
-        "pubmed-journal-metrics.user.js",
-        "pubmed-journal-metrics.full.user.js",
+        "journal-metrics.user.js",
+        "journal-metrics.full.user.js",
     )
     args.output.write_text(output_script, encoding="utf-8")
     print(f"Wrote {args.output} ({args.output.stat().st_size} bytes)")

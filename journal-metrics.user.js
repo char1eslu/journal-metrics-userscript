@@ -2,7 +2,7 @@
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
 // @version      0.2.1
-// @description  Show journal impact factor, JCR quartile, CAS partition and Sci-Hub entry on PubMed and journal pages.
+// @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
 // @match        https://www.ncbi.nlm.nih.gov/pmc/articles/*
@@ -38,8 +38,8 @@
 // @match        https://journals.asm.org/doi/*
 // @match        https://journals.physiology.org/doi/*
 // @match        https://karger.com/*/article/*
-// @downloadURL  https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/pubmed-journal-metrics.user.js
-// @updateURL    https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/pubmed-journal-metrics.user.js
+// @downloadURL  https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/journal-metrics.user.js
+// @updateURL    https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/journal-metrics.user.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -61,11 +61,11 @@
     dataUrl: "https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/journal-data.json",
     scihubDomainsUrl: "https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/scihub-domains.json",
     unpaywallBaseUrl: "https://unpaywall.org/",
-    cacheKey: "pubmed-journal-metrics:data:v1",
-    cacheTimeKey: "pubmed-journal-metrics:data-time:v1",
-    scihubDomainsCacheKey: "pubmed-journal-metrics:scihub-domains:v1",
-    scihubDomainsCacheTimeKey: "pubmed-journal-metrics:scihub-domains-time:v1",
-    citationsCacheKey: "pubmed-journal-metrics:citations:v1",
+    cacheKey: "journal-metrics:data:v1",
+    cacheTimeKey: "journal-metrics:data-time:v1",
+    scihubDomainsCacheKey: "journal-metrics:scihub-domains:v1",
+    scihubDomainsCacheTimeKey: "journal-metrics:scihub-domains-time:v1",
+    citationsCacheKey: "journal-metrics:citations:v1",
     cacheMs: 7 * 24 * 60 * 60 * 1000,
     scihubCacheMs: 24 * 60 * 60 * 1000,
     citationsCacheMs: 7 * 24 * 60 * 60 * 1000,
