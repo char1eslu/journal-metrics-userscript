@@ -15,11 +15,11 @@ Tampermonkey userscript for PubMed and common journal sites. It displays journal
 
 Recommended full offline install:
 
-<https://raw.githubusercontent.com/char1eslu/pubmed-journal-metrics-userscript/main/pubmed-journal-metrics.full.user.js>
+<https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/pubmed-journal-metrics.full.user.js>
 
 Lightweight install, with journal data loaded from `journal-data.json`:
 
-<https://raw.githubusercontent.com/char1eslu/pubmed-journal-metrics-userscript/main/pubmed-journal-metrics.user.js>
+<https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/pubmed-journal-metrics.user.js>
 
 Open either link in the browser, then let Tampermonkey install it. After installation, open PubMed, for example `https://pubmed.ncbi.nlm.nih.gov/?term=kidney+injury`.
 

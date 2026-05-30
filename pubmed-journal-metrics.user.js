@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         PubMed Journal Metrics
+// @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.2.0
+// @version      0.2.1
 // @description  Show journal impact factor, JCR quartile, CAS partition and Sci-Hub entry on PubMed and journal pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -38,8 +38,8 @@
 // @match        https://journals.asm.org/doi/*
 // @match        https://journals.physiology.org/doi/*
 // @match        https://karger.com/*/article/*
-// @downloadURL  https://raw.githubusercontent.com/char1eslu/pubmed-journal-metrics-userscript/main/pubmed-journal-metrics.user.js
-// @updateURL    https://raw.githubusercontent.com/char1eslu/pubmed-journal-metrics-userscript/main/pubmed-journal-metrics.user.js
+// @downloadURL  https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/pubmed-journal-metrics.user.js
+// @updateURL    https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/pubmed-journal-metrics.user.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -58,8 +58,8 @@
   const CONFIG = {
     embeddedData: null,
     // Replace this with your own raw GitHub/Gist URL after generating a full data file.
-    dataUrl: "https://raw.githubusercontent.com/char1eslu/pubmed-journal-metrics-userscript/main/journal-data.json",
-    scihubDomainsUrl: "https://raw.githubusercontent.com/char1eslu/pubmed-journal-metrics-userscript/main/scihub-domains.json",
+    dataUrl: "https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/journal-data.json",
+    scihubDomainsUrl: "https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/scihub-domains.json",
     unpaywallBaseUrl: "https://unpaywall.org/",
     cacheKey: "pubmed-journal-metrics:data:v1",
     cacheTimeKey: "pubmed-journal-metrics:data-time:v1",
@@ -72,7 +72,7 @@
     fallbackScihubDomains: ["https://sci-hub.ru", "https://sci-hub.st", "https://sci-hub.se"],
     fallbackData: {
       meta: {
-        name: "PubMed Journal Metrics sample data",
+        name: "Journal Metrics sample data",
         updated: "2026-05-30",
         source: "Sample records. Replace CONFIG.dataUrl with a full generated JSON file.",
       },
@@ -368,7 +368,7 @@
       GM_setValue(CONFIG.cacheTimeKey, String(now));
       return remoteData;
     } catch (error) {
-      console.info("[PubMed Journal Metrics] Using fallback sample data:", error.message);
+      console.info("[Journal Metrics] Using fallback sample data:", error.message);
       if (cachedRaw) {
         try {
           return JSON.parse(cachedRaw);
@@ -400,7 +400,7 @@
       GM_setValue(CONFIG.scihubDomainsCacheTimeKey, String(now));
       return domains;
     } catch (error) {
-      console.info("[PubMed Journal Metrics] Using fallback Sci-Hub domains:", error.message);
+      console.info("[Journal Metrics] Using fallback Sci-Hub domains:", error.message);
       if (cachedRaw) {
         try {
           return normalizeDomainList(JSON.parse(cachedRaw));
@@ -793,6 +793,6 @@
   }
 
   main().catch((error) => {
-    console.error("[PubMed Journal Metrics] Failed to initialize:", error);
+    console.error("[Journal Metrics] Failed to initialize:", error);
   });
 })();
