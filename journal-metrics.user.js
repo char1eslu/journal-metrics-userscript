@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.2.3
+// @version      0.2.4
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -209,6 +209,20 @@
     return match ? match[1].trim() : text.split(".")[0].trim();
   }
 
+  function parseJournalTitleFromCitation(citationText) {
+    const text = String(citationText || "").replace(/\s+/g, " ").trim();
+    const patterns = [
+      /^(.+?)\s+\d+\s*\(\s*\d+\s*\)\s*[:：]/,
+      /^(.+?)\s+\d+\s*[:：]\s*\w/,
+      /^(.+?)\s+\d{4}\s*[;,]/,
+    ];
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match?.[1]) return match[1].replace(/^[|,\s]+|[|,\s]+$/g, "");
+    }
+    return "";
+  }
+
   function normalizeDoi(value) {
     const match = String(value || "").match(/10\.\d{4,9}\/[^\s"'<>]+/i);
     if (!match) return "";
@@ -282,6 +296,24 @@
       if (journal || issn || doi) return { journal, issn, doi };
     }
     return {};
+  }
+
+  function getVisibleJournalTitle() {
+    const selectors = [
+      ".article-citation",
+      ".ejp-article-citation",
+      ".article-meta",
+      ".article-info",
+      ".citation",
+      "[class*='citation']",
+    ];
+    for (const selector of selectors) {
+      for (const node of document.querySelectorAll(selector)) {
+        const journal = parseJournalTitleFromCitation(node.textContent || "");
+        if (journal) return journal;
+      }
+    }
+    return parseJournalTitleFromCitation(document.body?.textContent || "");
   }
 
   function cssEscape(value) {
@@ -893,6 +925,7 @@
 
   function getGenericArticleQuery() {
     const jsonLd = getJsonLdArticleInfo();
+    const visibleJournal = getVisibleJournalTitle();
     const journal = getMetaContent(
       "citation_journal_title",
       "citation_journal_abbrev",
@@ -908,10 +941,10 @@
     const abbrev = getMetaContent("citation_journal_abbrev", "citation_journal_abbreviation");
     const issn = getMetaContent("citation_issn", "prism.issn", "dc.ISSN", "dc.issn", "eprints.issn");
     return {
-      journal: journal || jsonLd.journal,
+      journal: journal || jsonLd.journal || visibleJournal,
       abbrev,
       issn: issn || jsonLd.issn,
-      aliases: [getMetaContent("citation_publisher"), getMetaContent("prism.publisher")],
+      aliases: [visibleJournal, getMetaContent("citation_publisher"), getMetaContent("prism.publisher")],
     };
   }
 
