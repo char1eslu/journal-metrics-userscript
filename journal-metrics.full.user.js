@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.2.5
+// @version      0.2.6
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -394,6 +394,38 @@
     return "";
   }
 
+  function buildOpenAlexSearchUrl(title) {
+    const cleanTitle = String(title || "").replace(/\s+/g, " ").trim();
+    if (!cleanTitle) return "";
+    return `https://api.openalex.org/works?search=${encodeURIComponent(cleanTitle)}&select=id,doi,display_name,primary_location,locations,cited_by_count&per-page=1`;
+  }
+
+  function getOpenAlexSourceInfo(work) {
+    const locations = [
+      work?.primary_location,
+      ...(Array.isArray(work?.locations) ? work.locations : []),
+    ].filter(Boolean);
+    const source = locations.find((location) => location?.source?.type === "journal")?.source
+      || work?.primary_location?.source
+      || locations.find((location) => location?.source)?.source
+      || {};
+    return {
+      title: work?.display_name || "",
+      journal: source.display_name || "",
+      issn: firstText(source.issn_l, ...asArray(source.issn)),
+      doi: normalizeDoi(work?.doi || ""),
+      citedBy: work?.cited_by_count,
+    };
+  }
+
+  async function fetchOpenAlexByTitle(title) {
+    const url = buildOpenAlexSearchUrl(title);
+    if (!url) return null;
+    const data = await loadJsonViaGm(url);
+    const work = Array.isArray(data.results) ? data.results[0] : null;
+    return work ? getOpenAlexSourceInfo(work) : null;
+  }
+
   function buildSemanticScholarUrl(target) {
     const doi = normalizeDoi(target);
     if (doi) {
@@ -636,6 +668,63 @@
     return best;
   }
 
+  function titleTokens(value) {
+    const stop = new Set(["a", "an", "and", "are", "by", "for", "from", "in", "is", "of", "on", "or", "the", "to", "using", "with"]);
+    return normalizeKey(value)
+      .split(" ")
+      .filter((token) => token.length > 2 && !stop.has(token.toLowerCase()));
+  }
+
+  function titleSimilarity(left, right) {
+    const leftTokens = new Set(titleTokens(left));
+    const rightTokens = new Set(titleTokens(right));
+    if (!leftTokens.size || !rightTokens.size) return 0;
+    let overlap = 0;
+    for (const token of leftTokens) {
+      if (rightTokens.has(token)) overlap += 1;
+    }
+    return overlap / Math.max(leftTokens.size, rightTokens.size);
+  }
+
+  function maybeJournalFromScholarMeta(metaText) {
+    const text = String(metaText || "").replace(/\s+/g, " ").trim();
+    const journalPart = text
+      .split(/\s+-\s+/)
+      .map((part) => part.trim())
+      .find((part) => /\b(19|20)\d{2}\b/.test(part) || /journal|proceedings|transactions|letters|reviews|science|nature|kidney|cell/i.test(part));
+    if (!journalPart) return "";
+    return journalPart
+      .replace(/\s*,?\s*\b(19|20)\d{2}\b.*$/, "")
+      .replace(/\s+\.{3,}.*$/, "")
+      .trim();
+  }
+
+  function getScholarResultTitle(result) {
+    return firstText(result.querySelector(".gs_rt")?.textContent || "")
+      .replace(/^(?:\[[^\]]+\]\s*)+/, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  async function hydrateScholarResultFromOpenAlex(result, targetNode, metrics, title, scihubTarget) {
+    if (!title || result.dataset.pjmOpenalexHydrated === "1") return;
+    result.dataset.pjmOpenalexHydrated = "1";
+    try {
+      const info = await fetchOpenAlexByTitle(title);
+      if (!info || titleSimilarity(title, info.title) < 0.72) return;
+      const record = lookupJournal({ journal: info.journal, issn: info.issn, aliases: [info.journal] });
+      const resolvedTarget = info.doi || scihubTarget;
+      if (!record && !resolvedTarget) return;
+      if (metrics) {
+        updateMetrics(metrics, record, { scihubTarget: resolvedTarget, root: result });
+      } else {
+        insertMetrics(targetNode, record, { scihubTarget: resolvedTarget });
+      }
+    } catch {
+      // Keep the locally parsed result when OpenAlex title resolution fails.
+    }
+  }
+
   function addStyle() {
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement("style");
@@ -806,6 +895,12 @@
     hydrateCitationChips(metrics);
   }
 
+  function updateMetrics(metrics, record, options = {}) {
+    if (!metrics) return;
+    metrics.outerHTML = renderMetrics(record, options);
+    hydrateCitationChips(options.root || document);
+  }
+
   function hydrateCitationChips(root = document) {
     const chips = root.querySelectorAll?.(".pjm-cited[data-pjm-citation-target]") || [];
     for (const chipNode of chips) {
@@ -857,14 +952,15 @@
     for (const result of results) {
       if (result.dataset.pjmProcessed === "1") continue;
       const meta = result.querySelector(".gs_a")?.textContent || "";
+      const title = getScholarResultTitle(result);
       const doi = getArticleDoi(result);
-      const chunks = meta.split(/\s+-\s+/).map((part) => part.trim()).filter(Boolean);
-      const journal = chunks.length > 1 ? chunks[1].replace(/\s*,?\s*\d{4}.*$/, "") : "";
+      const journal = maybeJournalFromScholarMeta(meta);
       const record = lookupJournal({ journal, abbrev: journal });
-      if (!record && !doi) continue;
+      if (!record && !doi && !title) continue;
       result.dataset.pjmProcessed = "1";
       const target = result.querySelector(".gs_ri") || result;
       insertMetrics(target, record, { scihubTarget: doi });
+      hydrateScholarResultFromOpenAlex(result, target, target.querySelector(`.${BADGE_CLASS}`), title, doi);
     }
   }
 
