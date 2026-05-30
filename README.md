@@ -11,11 +11,15 @@ Tampermonkey userscript for PubMed. It displays journal impact factor, JCR quart
 
 ## Install
 
-1. Open Tampermonkey.
-2. Create a new script.
-3. Paste `pubmed-journal-metrics.user.js`.
-4. Save it.
-5. Open PubMed, for example `https://pubmed.ncbi.nlm.nih.gov/?term=kidney+injury`.
+Recommended full offline install:
+
+<https://raw.githubusercontent.com/char1eslu/pubmed-journal-metrics-userscript/main/pubmed-journal-metrics.full.user.js>
+
+Lightweight install, with journal data loaded from `journal-data.json`:
+
+<https://raw.githubusercontent.com/char1eslu/pubmed-journal-metrics-userscript/main/pubmed-journal-metrics.user.js>
+
+Open either link in the browser, then let Tampermonkey install it. After installation, open PubMed, for example `https://pubmed.ncbi.nlm.nih.gov/?term=kidney+injury`.
 
 The script includes a tiny built-in sample dataset, so several common journals will render immediately. For real use, use either the offline build or a hosted JSON file.
 
