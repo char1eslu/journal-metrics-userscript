@@ -9,7 +9,7 @@ Tampermonkey userscript for common academic and journal sites. It displays journ
 - `scihub-domains.json`: ordered Sci-Hub candidate domain list loaded by the userscript.
 - `scripts/build-data-from-showjcr.py`: converts ShowJCR CSV files into the JSON consumed by the userscript.
 - `scripts/embed-data.py`: creates a full offline `.user.js` by embedding `journal-data.json`.
-- `scripts/update-scihub-domains.py`: probes configured Sci-Hub candidate domains and keeps reachable domains first.
+- `scripts/update-scihub-domains.py`: discovers Sci-Hub candidates from configured sources and keeps reachable domains first.
 
 ## Install
 
@@ -27,9 +27,9 @@ The script includes a tiny built-in sample dataset, so several common journals w
 
 ## Supported Sites
 
-The script has dedicated PubMed search/article handling and generic metadata handling for many journal pages. Current match rules include PubMed, PMC, Nature, Science, SpringerLink, ScienceDirect, Cell, The Lancet, JAMA Network, Oxford Academic, Wiley, ACS, Taylor & Francis, SAGE, PLOS, BMJ, Frontiers, MDPI, bioRxiv, medRxiv, NEJM, AHA Journals, JCI, PNAS, eLife, PeerJ, IOPscience, Royal Society, ASM, APS and Karger.
+The script has dedicated PubMed and Google Scholar result handling, plus generic metadata handling for many journal pages. Current match rules include PubMed/PMC, Europe PMC, Google Scholar, DOI.org, Crossref Search, Semantic Scholar, OpenAlex, Nature, Science, Springer/SpringerOpen/BMC, ScienceDirect, Cell, The Lancet, JAMA Network, Oxford Academic, Wiley, ACM, IEEE Xplore, ACS, RSC, AIP, Taylor & Francis, SAGE, PLOS, BMJ, Frontiers, MDPI, bioRxiv, medRxiv, NEJM, AHA Journals, JCI, PNAS, APS, eLife, PeerJ, IOPscience, Royal Society, ASM, APS Physiology, Karger, Cambridge Core, De Gruyter/De Gruyter Brill, Emerald, World Scientific, Annual Reviews, University of Chicago Press, J-STAGE, LWW, Cochrane Library, Hindawi, Mary Ann Liebert, ATS Journals, Future Medicine, Thieme, ResearchGate, arXiv, SSRN and Preprints.org.
 
-Generic journal pages are matched through standard `citation_*`, `prism.*`, Dublin Core DOI/ISSN and journal-title metadata. If a page exposes DOI but no journal metadata, only the Sci-Hub entry may appear.
+Generic journal pages are matched through standard `citation_*`, `prism.*`, Dublin Core, JSON-LD DOI/ISSN and journal-title metadata. If a page exposes DOI but no journal metadata, only the `Cited`, Unpaywall and Sci-Hub entries may appear.
 
 ## Citation Count
 

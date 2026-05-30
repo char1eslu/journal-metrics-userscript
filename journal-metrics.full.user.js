@@ -1,23 +1,38 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.2.1
+// @version      0.2.2
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
 // @match        https://www.ncbi.nlm.nih.gov/pmc/articles/*
+// @match        https://pmc.ncbi.nlm.nih.gov/articles/*
+// @match        https://europepmc.org/article/*
+// @match        https://europepmc.org/search*
+// @match        https://scholar.google.com/*
+// @match        https://doi.org/10.*
+// @match        https://dx.doi.org/10.*
+// @match        https://search.crossref.org/*
+// @match        https://www.semanticscholar.org/paper/*
+// @match        https://openalex.org/works/*
 // @match        https://*.nature.com/articles/*
 // @match        https://www.science.org/doi/*
 // @match        https://link.springer.com/article/*
 // @match        https://link.springer.com/chapter/*
+// @match        https://*.biomedcentral.com/articles/*
+// @match        https://*.springeropen.com/articles/*
 // @match        https://www.sciencedirect.com/science/article/*
 // @match        https://www.cell.com/*/fulltext/*
 // @match        https://www.thelancet.com/journals/*/article/*
 // @match        https://jamanetwork.com/journals/*/fullarticle/*
 // @match        https://academic.oup.com/*/article/*
 // @match        https://onlinelibrary.wiley.com/doi/*
+// @match        https://dl.acm.org/doi/*
+// @match        https://ieeexplore.ieee.org/document/*
 // @match        https://acsjournals.onlinelibrary.wiley.com/doi/*
 // @match        https://pubs.acs.org/doi/*
+// @match        https://pubs.rsc.org/*
+// @match        https://pubs.aip.org/*/article/*
 // @match        https://www.tandfonline.com/doi/*
 // @match        https://journals.sagepub.com/doi/*
 // @match        https://journals.plos.org/*/article*
@@ -31,6 +46,7 @@
 // @match        https://www.ahajournals.org/doi/*
 // @match        https://www.jci.org/articles/view/*
 // @match        https://www.pnas.org/doi/*
+// @match        https://journals.aps.org/*/abstract/*
 // @match        https://elifesciences.org/articles/*
 // @match        https://peerj.com/articles/*
 // @match        https://iopscience.iop.org/article/*
@@ -38,6 +54,28 @@
 // @match        https://journals.asm.org/doi/*
 // @match        https://journals.physiology.org/doi/*
 // @match        https://karger.com/*/article/*
+// @match        https://karger.com/Article/*
+// @match        https://www.cambridge.org/core/journals/*/article/*
+// @match        https://www.degruyter.com/document/doi/*
+// @match        https://www.degruyterbrill.com/document/doi/*
+// @match        https://www.emerald.com/insight/content/doi/*
+// @match        https://www.worldscientific.com/doi/*
+// @match        https://www.annualreviews.org/doi/*
+// @match        https://www.journals.uchicago.edu/doi/*
+// @match        https://www.jstage.jst.go.jp/article/*
+// @match        https://journals.lww.com/*/fulltext/*
+// @match        https://journals.lww.com/*/abstract/*
+// @match        https://www.cochranelibrary.com/cdsr/doi/*
+// @match        https://www.hindawi.com/journals/*/*/*
+// @match        https://www.liebertpub.com/doi/*
+// @match        https://www.atsjournals.org/doi/*
+// @match        https://www.futuremedicine.com/doi/*
+// @match        https://www.thieme-connect.com/products/ejournals/abstract/*
+// @match        https://www.thieme-connect.com/products/ejournals/html/*
+// @match        https://www.researchgate.net/publication/*
+// @match        https://arxiv.org/abs/*
+// @match        https://papers.ssrn.com/sol3/papers.cfm*
+// @match        https://www.preprints.org/manuscript/*
 // @downloadURL  https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/journal-metrics.full.user.js
 // @updateURL    https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/journal-metrics.full.user.js
 // @grant        GM_xmlhttpRequest
@@ -190,12 +228,69 @@
     return "";
   }
 
+  function firstText(...values) {
+    for (const value of values.flat()) {
+      const text = String(value || "").replace(/\s+/g, " ").trim();
+      if (text) return text;
+    }
+    return "";
+  }
+
+  function asArray(value) {
+    return Array.isArray(value) ? value : value ? [value] : [];
+  }
+
+  function parseJsonLdObjects() {
+    const objects = [];
+    for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+      try {
+        const parsed = JSON.parse(script.textContent || "");
+        const stack = asArray(parsed);
+        while (stack.length) {
+          const item = stack.shift();
+          if (!item || typeof item !== "object") continue;
+          objects.push(item);
+          if (Array.isArray(item["@graph"])) stack.push(...item["@graph"]);
+          if (item.mainEntity) stack.push(...asArray(item.mainEntity));
+        }
+      } catch {
+        // Ignore malformed structured data.
+      }
+    }
+    return objects;
+  }
+
+  function getJsonLdArticleInfo() {
+    const objects = parseJsonLdObjects();
+    for (const item of objects) {
+      const type = asArray(item["@type"]).join(" ").toLowerCase();
+      const isArticle = /(article|scholarlyarticle|medicalscholarlyarticle|report)/.test(type);
+      if (!isArticle && !item.isPartOf && !item.publication) continue;
+
+      const container = item.isPartOf || item.publication || item.publisher || {};
+      const journal = firstText(
+        container.name,
+        container.alternateName,
+        item.journal,
+        item.periodical,
+        item.sourceOrganization?.name
+      );
+      const issn = firstText(container.issn, item.issn);
+      const doi = normalizeDoi(firstText(item.identifier, item.doi, item.sameAs, item.url));
+      if (journal || issn || doi) return { journal, issn, doi };
+    }
+    return {};
+  }
+
   function cssEscape(value) {
     if (window.CSS?.escape) return CSS.escape(value);
     return String(value).replace(/["\\]/g, "\\$&");
   }
 
   function getArticleDoi(root = document) {
+    const jsonLdDoi = root === document ? getJsonLdArticleInfo().doi : "";
+    if (jsonLdDoi) return jsonLdDoi;
+
     const metaDoi = getMetaContent(
       "citation_doi",
       "dc.Identifier",
@@ -207,7 +302,7 @@
     );
     if (metaDoi) return normalizeDoi(metaDoi);
 
-    const doiLink = root.querySelector?.('a[href*="doi.org/10."], a[href*="/doi/10."]');
+    const doiLink = root.querySelector?.('a[href*="doi.org/10."], a[href*="/doi/10."], a[href*="dx.doi.org/10."]');
     const hrefDoi = normalizeDoi(doiLink?.href || "");
     if (hrefDoi) return hrefDoi;
 
@@ -707,6 +802,60 @@
     }
   }
 
+  function processGoogleScholarResults() {
+    if (location.hostname !== "scholar.google.com") return;
+    const results = document.querySelectorAll(".gs_r.gs_or");
+    for (const result of results) {
+      if (result.dataset.pjmProcessed === "1") continue;
+      const meta = result.querySelector(".gs_a")?.textContent || "";
+      const doi = getArticleDoi(result);
+      const chunks = meta.split(/\s+-\s+/).map((part) => part.trim()).filter(Boolean);
+      const journal = chunks.length > 1 ? chunks[1].replace(/\s*,?\s*\d{4}.*$/, "") : "";
+      const record = lookupJournal({ journal, abbrev: journal });
+      if (!record && !doi) continue;
+      result.dataset.pjmProcessed = "1";
+      const target = result.querySelector(".gs_ri") || result;
+      insertMetrics(target, record, { scihubTarget: doi });
+    }
+  }
+
+  function processGenericResultLists() {
+    const listHosts = [
+      "search.crossref.org",
+      "www.semanticscholar.org",
+      "openalex.org",
+      "europepmc.org",
+      "www.researchgate.net",
+    ];
+    if (!listHosts.includes(location.hostname)) return;
+
+    const selectors = [
+      ".result-list-item",
+      ".search-result",
+      ".search-results-item",
+      ".paper",
+      ".cl-paper-row",
+      ".result",
+      ".item",
+    ];
+    const items = document.querySelectorAll(selectors.join(","));
+    for (const item of items) {
+      if (item.dataset.pjmProcessed === "1") continue;
+      const doi = getArticleDoi(item);
+      const journal = firstText(
+        item.querySelector("[data-test='journal-title']")?.textContent,
+        item.querySelector(".journal-title")?.textContent,
+        item.querySelector(".publication-title")?.textContent,
+        item.querySelector(".venue")?.textContent,
+        item.querySelector(".journal")?.textContent
+      );
+      const record = lookupJournal({ journal, abbrev: journal });
+      if (!record && !doi) continue;
+      item.dataset.pjmProcessed = "1";
+      insertMetrics(item, record, { scihubTarget: doi });
+    }
+  }
+
   function getArticlePageQuery() {
     const journalTitle = document.querySelector('meta[name="citation_journal_title"]')?.content || "";
     const publisherAbbrev = document.querySelector('meta[name="citation_publisher"]')?.content || "";
@@ -740,21 +889,26 @@
   }
 
   function getGenericArticleQuery() {
+    const jsonLd = getJsonLdArticleInfo();
     const journal = getMetaContent(
       "citation_journal_title",
       "citation_journal_abbrev",
       "prism.publicationName",
+      "prism.publicationname",
+      "prism.journal",
       "dc.Source",
       "dc.source",
+      "dc.relation.ispartof",
+      "journal_title",
       "og:site_name"
     );
-    const abbrev = getMetaContent("citation_journal_abbrev");
-    const issn = getMetaContent("citation_issn", "prism.issn", "dc.ISSN", "dc.issn");
+    const abbrev = getMetaContent("citation_journal_abbrev", "citation_journal_abbreviation");
+    const issn = getMetaContent("citation_issn", "prism.issn", "dc.ISSN", "dc.issn", "eprints.issn");
     return {
-      journal,
+      journal: journal || jsonLd.journal,
       abbrev,
-      issn,
-      aliases: [getMetaContent("citation_publisher")],
+      issn: issn || jsonLd.issn,
+      aliases: [getMetaContent("citation_publisher"), getMetaContent("prism.publisher")],
     };
   }
 
@@ -799,6 +953,8 @@
     try {
       addStyle();
       processSearchResults();
+      processGoogleScholarResults();
+      processGenericResultLists();
       processArticlePage();
       processGenericArticlePage();
     } finally {
