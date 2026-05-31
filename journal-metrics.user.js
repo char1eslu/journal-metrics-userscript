@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.12
+// @version      0.3.13
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -981,9 +981,9 @@
         flex: 1 1 auto;
       }
       .pjm-filterbar-scholar {
-        display: flex;
-        width: 100%;
-        max-width: none;
+        display: inline-flex;
+        width: auto;
+        max-width: 100%;
         margin: 8px 0 18px;
         padding: 0;
         gap: 5px;
@@ -992,10 +992,11 @@
         gap: 5px;
       }
       .pjm-filterbar-scholar .pjm-filterbar-spacer {
-        flex: 1 1 auto;
-        min-width: 8px;
+        flex: 0 0 1px;
+        width: 1px;
         height: 20px;
         margin: 0 6px;
+        background: #e5e7eb;
       }
       .pjm-filterbar button,
       .pjm-filterbar input {
@@ -1054,13 +1055,6 @@
       }
       @media (max-width: 700px) {
         .pjm-filterbar-pubmed .pjm-filterbar-spacer {
-          display: none;
-        }
-        .pjm-filterbar-scholar {
-          width: 100% !important;
-          margin-left: 0 !important;
-        }
-        .pjm-filterbar-scholar .pjm-filterbar-spacer {
           display: none;
         }
       }
@@ -1392,7 +1386,6 @@
       const list = document.querySelector("#gs_res_ccl_mid") || document.querySelector("#gs_res_ccl");
       if (list) {
         list.insertAdjacentElement("beforebegin", bar);
-        alignScholarFilterbar(bar);
         return;
       }
     }
@@ -1443,50 +1436,11 @@
     bar.style.width = `calc(100% - ${left + right}px)`;
   }
 
-  function alignScholarFilterbar(bar) {
-    if (location.hostname !== "scholar.google.com" || !bar) return;
-    const anchor =
-      document.querySelector("#gs_res_ccl_mid .gs_r .gs_ri") ||
-      document.querySelector("#gs_res_ccl .gs_r .gs_ri") ||
-      document.querySelector("#gs_res_ccl_mid .gs_r") ||
-      document.querySelector("#gs_res_ccl .gs_r");
-    const sideLink =
-      document.querySelector("#gs_res_ccl_mid .gs_r .gs_ggs") ||
-      document.querySelector("#gs_res_ccl .gs_r .gs_ggs") ||
-      document.querySelector("#gs_res_ccl_mid .gs_r .gs_ggsd") ||
-      document.querySelector("#gs_res_ccl .gs_r .gs_ggsd");
-    const parent = bar.parentElement;
-    if (!anchor || !parent) return;
-
-    const parentRect = parent.getBoundingClientRect();
-    const anchorRect = anchor.getBoundingClientRect();
-    const sideLinkRect = sideLink?.getBoundingClientRect();
-    const sideRailLeft = sideLinkRect?.width && sideLinkRect.left > anchorRect.left
-      ? sideLinkRect.left
-      : 0;
-    const desiredRightEdge = sideRailLeft
-      ? sideRailLeft - 112
-      : anchorRect.right;
-    const rightEdge = Math.min(parentRect.right - 16, desiredRightEdge);
-    const targetWidth = Math.round(rightEdge - anchorRect.left);
-    if (!parentRect.width || !targetWidth || targetWidth < 320) {
-      bar.style.marginLeft = "";
-      bar.style.width = "";
-      return;
-    }
-
-    const left = Math.max(0, Math.round(anchorRect.left - parentRect.left));
-    const right = Math.max(0, Math.round(parentRect.right - rightEdge));
-    bar.style.marginLeft = `${left}px`;
-    bar.style.width = `calc(100% - ${left + right}px)`;
-  }
-
   function ensureFilterbar() {
     if (!isResultListPage()) return;
     const existing = document.getElementById("pjm-filterbar");
     if (existing) {
       alignPubmedFilterbar(existing);
-      alignScholarFilterbar(existing);
       return;
     }
     if (isGenericResultListHost() && !genericResultListAnchor()) return;
@@ -1932,7 +1886,6 @@
       observePageChanges.resizeTimer = window.setTimeout(() => {
         const bar = document.getElementById("pjm-filterbar");
         alignPubmedFilterbar(bar);
-        alignScholarFilterbar(bar);
       }, 120);
     });
   }
