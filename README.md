@@ -42,13 +42,16 @@ On supported result pages, the toolbar can highlight or hide records by:
 
 The same toolbar can export detected page items as RIS or BibTeX. DOI-backed exports try citation content negotiation first and fall back to locally generated RIS or BibTeX when needed.
 
-Extra result-page tools:
+Extra result-page tools are grouped under `More` to keep the toolbar compact:
 
 - `DOI`: copy visible DOI values.
 - `Cite`: copy compact citation text.
 - `Abs`: show or hide PubMed snippets/abstracts when PubMed has rendered them.
+- `Selected RIS/BibTeX`: export selected records. PubMed uses its native result checkboxes; Google Scholar gets a small checkbox per result.
 
 The Tampermonkey menu also includes filtered RIS/BibTeX export, DOI/PMID lists, CSV and Markdown table export.
+
+`Journal Metrics: Settings` opens a compact settings panel for toggling citation counts, OA, Sci-Hub, PubPeer, Crossref status chips, PubMed risk chips, PubMed abstracts and the article-page floating bar. The same panel can clear journal data, citation, OA and Crossref caches.
 
 ## Citation Count
 
@@ -68,6 +71,8 @@ PubMed-backed items are checked against NCBI ESummary for publication-status war
 Crossref update metadata is checked for DOI-backed items and can surface `Correction`, `Retraction`, or `Update` chips when Crossref reports a relation. When a result has a title but no DOI, the script can resolve the DOI through Crossref only when the returned title is a high-confidence match.
 
 Journal metric hover text includes the matching route, such as ISSN, journal title, abbreviation, or low-confidence page-text matching.
+
+Article pages can show a small floating bar with OA, Sci-Hub, Cite and PubPeer shortcuts when the corresponding settings are enabled.
 
 ## Sci-Hub Domains
 

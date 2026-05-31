@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.18
+// @version      0.3.19
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -953,6 +953,13 @@
   function defaultSettings() {
     return {
       pubmedAbstracts: false,
+      showCited: true,
+      showOa: true,
+      showScihub: true,
+      showPubpeer: true,
+      showCrossrefStatus: true,
+      showRisk: true,
+      showArticleFloatingBar: true,
     };
   }
 
@@ -982,6 +989,78 @@
     GM_setValue(CONFIG.settingsKey, JSON.stringify(STATE.settings));
   }
 
+  function clearCacheKeys(keys) {
+    for (const key of keys) GM_setValue(key, "");
+  }
+
+  function reloadSoon() {
+    window.setTimeout(() => location.reload(), 250);
+  }
+
+  function settingsRows() {
+    const settings = { ...defaultSettings(), ...(STATE.settings || {}) };
+    const labels = [
+      ["showCited", "Citation counts"],
+      ["showOa", "OA / PDF"],
+      ["showScihub", "Sci-Hub"],
+      ["showPubpeer", "PubPeer"],
+      ["showCrossrefStatus", "Crossref status"],
+      ["showRisk", "PubMed risk status"],
+      ["showArticleFloatingBar", "Article floating bar"],
+      ["pubmedAbstracts", "PubMed abstracts"],
+    ];
+    return labels.map(([key, label]) => `
+      <label class="pjm-settings-row">
+        <input type="checkbox" data-pjm-setting="${escapeHtml(key)}" ${settings[key] ? "checked" : ""}>
+        <span>${escapeHtml(label)}</span>
+      </label>
+    `).join("");
+  }
+
+  function openSettingsPanel() {
+    document.getElementById("pjm-settings-modal")?.remove();
+    const modal = document.createElement("div");
+    modal.id = "pjm-settings-modal";
+    modal.innerHTML = `
+      <div class="pjm-settings-backdrop" data-pjm-close-settings="1"></div>
+      <div class="pjm-settings-dialog" role="dialog" aria-label="Journal Metrics settings">
+        <div class="pjm-settings-head">
+          <strong>Journal Metrics</strong>
+          <button type="button" data-pjm-close-settings="1" title="Close">×</button>
+        </div>
+        <div class="pjm-settings-body">${settingsRows()}</div>
+        <div class="pjm-settings-actions">
+          <button type="button" data-pjm-cache="data">Refresh data</button>
+          <button type="button" data-pjm-cache="citations">Clear citations</button>
+          <button type="button" data-pjm-cache="oa">Clear OA</button>
+          <button type="button" data-pjm-cache="crossref">Clear Crossref</button>
+        </div>
+      </div>
+    `;
+    modal.addEventListener("click", (event) => {
+      if (event.target.closest("[data-pjm-close-settings]")) {
+        modal.remove();
+        return;
+      }
+      const input = event.target.closest("input[data-pjm-setting]");
+      if (input) {
+        saveSettings({ ...STATE.settings, [input.dataset.pjmSetting]: input.checked });
+        reloadSoon();
+        return;
+      }
+      const cacheButton = event.target.closest("button[data-pjm-cache]");
+      if (!cacheButton) return;
+      const cache = cacheButton.dataset.pjmCache;
+      if (cache === "data") clearCacheKeys([CONFIG.cacheKey, CONFIG.cacheTimeKey, CONFIG.scihubDomainsCacheKey, CONFIG.scihubDomainsCacheTimeKey]);
+      if (cache === "citations") clearCacheKeys([CONFIG.citationsCacheKey]);
+      if (cache === "oa") clearCacheKeys([CONFIG.unpaywallCacheKey]);
+      if (cache === "crossref") clearCacheKeys([CONFIG.crossrefCacheKey, CONFIG.riskCacheKey]);
+      window.alert("Cache cleared. Reloading page.");
+      reloadSoon();
+    });
+    document.body.append(modal);
+  }
+
   function registerMenuCommands() {
     if (typeof GM_registerMenuCommand !== "function") return;
 
@@ -1005,6 +1084,18 @@
       saveSettings({ ...STATE.settings, pubmedAbstracts: !STATE.settings?.pubmedAbstracts });
       syncFilterbar();
       applyPubmedAbstracts();
+    });
+
+    GM_registerMenuCommand("Journal Metrics: Settings", () => openSettingsPanel());
+    GM_registerMenuCommand("Journal Metrics: Refresh data caches", () => {
+      clearCacheKeys([CONFIG.cacheKey, CONFIG.cacheTimeKey, CONFIG.scihubDomainsCacheKey, CONFIG.scihubDomainsCacheTimeKey]);
+      window.alert("Journal data and Sci-Hub cache cleared. Reloading page.");
+      reloadSoon();
+    });
+    GM_registerMenuCommand("Journal Metrics: Clear citation/OA/Crossref caches", () => {
+      clearCacheKeys([CONFIG.citationsCacheKey, CONFIG.unpaywallCacheKey, CONFIG.crossrefCacheKey, CONFIG.riskCacheKey]);
+      window.alert("Citation, OA, Crossref and risk caches cleared. Reloading page.");
+      reloadSoon();
     });
 
     GM_registerMenuCommand("Journal Metrics: Export visible RIS", () => exportCurrentPage("ris", { scope: "visible" }));
@@ -1285,6 +1376,31 @@
         background: #eff6ff;
         color: #1d4ed8;
       }
+      .pjm-more-wrap {
+        position: relative;
+        display: inline-flex;
+      }
+      .pjm-more-menu {
+        position: absolute;
+        top: calc(100% + 4px);
+        right: 0;
+        display: none;
+        z-index: 2147483645;
+        min-width: 132px;
+        padding: 5px;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        background: #fff;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+      }
+      .pjm-more-wrap.pjm-open .pjm-more-menu {
+        display: grid;
+        gap: 4px;
+      }
+      .pjm-more-menu button {
+        width: 100%;
+        text-align: left;
+      }
       .pjm-filterbar label {
         display: inline-flex;
         align-items: center;
@@ -1343,6 +1459,17 @@
       .pjm-filter-hit {
         border-left: 3px solid #2563eb;
         padding-left: 8px;
+      }
+      .pjm-scholar-select {
+        display: inline-flex;
+        align-items: center;
+        margin-right: 6px;
+        vertical-align: middle;
+      }
+      .pjm-scholar-select input {
+        width: 14px;
+        height: 14px;
+        margin: 0;
       }
       .pjm-abstract-expanded {
         display: block !important;
@@ -1443,6 +1570,93 @@
         padding: 8px 0;
         border-top: 1px solid #e2e8f0;
         border-bottom: 1px solid #e2e8f0;
+      }
+      #pjm-settings-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483646;
+        font-family: Arial, sans-serif;
+      }
+      .pjm-settings-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.18);
+      }
+      .pjm-settings-dialog {
+        position: absolute;
+        top: 72px;
+        right: 28px;
+        width: min(320px, calc(100vw - 40px));
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #fff;
+        box-shadow: 0 18px 46px rgba(15, 23, 42, 0.2);
+        color: #334155;
+        font-size: 13px;
+      }
+      .pjm-settings-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 9px 11px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+      .pjm-settings-head button,
+      .pjm-settings-actions button {
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        background: #fff;
+        color: #334155;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .pjm-settings-body {
+        display: grid;
+        gap: 7px;
+        padding: 10px 11px;
+      }
+      .pjm-settings-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .pjm-settings-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        padding: 10px 11px 11px;
+        border-top: 1px solid #e2e8f0;
+      }
+      .pjm-settings-actions button {
+        padding: 5px 6px;
+        font-size: 12px;
+      }
+      .pjm-floating-bar {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        z-index: 2147483644;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 10px 26px rgba(15, 23, 42, 0.16);
+        font-size: 12px;
+      }
+      .pjm-floating-bar a,
+      .pjm-floating-bar button {
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        background: #fff;
+        color: #334155;
+        padding: 3px 7px;
+        font-weight: 700;
+        line-height: 18px;
+        text-decoration: none !important;
+        cursor: pointer;
       }
     `;
     document.head.appendChild(style);
@@ -1552,18 +1766,20 @@
       }
     }
     const citationTarget = options.citationTarget || options.scihubTarget;
-    if (citationTarget || options.citationResult) {
+    if (STATE.settings?.showCited !== false && (citationTarget || options.citationResult)) {
       parts.push(citedChip(citationTarget, options.citationResult));
+    }
+    if (STATE.settings?.showRisk !== false && (citationTarget || options.citationResult)) {
       parts.push(riskChip(citationTarget));
     }
-    if (options.statuses?.length) {
+    if (STATE.settings?.showCrossrefStatus !== false && options.statuses?.length) {
       parts.push(statusChip(options.statuses, options.statusSource));
     }
     if (options.scihubTarget) {
-      if (!options.statuses?.length) parts.push(crossrefStatusChip(options.scihubTarget));
-      parts.push(unpaywallChip(options.scihubTarget));
-      parts.push(scihubChip(options.scihubTarget));
-      parts.push(pubpeerChip(options.scihubTarget));
+      if (STATE.settings?.showCrossrefStatus !== false && !options.statuses?.length) parts.push(crossrefStatusChip(options.scihubTarget));
+      if (STATE.settings?.showOa !== false) parts.push(unpaywallChip(options.scihubTarget));
+      if (STATE.settings?.showScihub !== false) parts.push(scihubChip(options.scihubTarget));
+      if (STATE.settings?.showPubpeer !== false) parts.push(pubpeerChip(options.scihubTarget));
     }
 
     const source = options.showSource && STATE.data?.meta?.updated
@@ -1873,12 +2089,20 @@
       </span>
       <span class="pjm-filterbar-spacer" aria-hidden="true"></span>
       <span class="pjm-filterbar-group">
-        <button type="button" data-pjm-action="export-ris" title="Copy page records as RIS">RIS</button>
-        <button type="button" data-pjm-action="export-bibtex" title="Copy page records as BibTeX">BibTeX</button>
-        <button type="button" data-pjm-action="copy-doi" title="Copy visible DOI list">DOI</button>
-        <button type="button" data-pjm-action="copy-cite" title="Copy compact citation text">Cite</button>
-        <button type="button" data-pjm-action="toggle-abstracts" title="Show or hide PubMed abstracts">Abs</button>
-        <button type="button" data-pjm-action="reset" title="Clear all filters">Reset</button>
+        <span class="pjm-more-wrap">
+          <button type="button" data-pjm-action="more" title="More tools">More</button>
+          <span class="pjm-more-menu">
+            <button type="button" data-pjm-action="export-ris" title="Copy visible records as RIS">RIS</button>
+            <button type="button" data-pjm-action="export-bibtex" title="Copy visible records as BibTeX">BibTeX</button>
+            <button type="button" data-pjm-action="export-selected-ris" title="Copy selected records as RIS">Selected RIS</button>
+            <button type="button" data-pjm-action="export-selected-bibtex" title="Copy selected records as BibTeX">Selected BibTeX</button>
+            <button type="button" data-pjm-action="copy-doi" title="Copy visible DOI list">DOI</button>
+            <button type="button" data-pjm-action="copy-cite" title="Copy compact citation text">Cite</button>
+            <button type="button" data-pjm-action="toggle-abstracts" title="Show or hide PubMed abstracts">Abs</button>
+            <button type="button" data-pjm-action="settings" title="Open settings">Settings</button>
+            <button type="button" data-pjm-action="reset" title="Clear all filters">Reset</button>
+          </span>
+        </span>
       </span>
     `;
     bar.addEventListener("click", (event) => {
@@ -1894,10 +2118,16 @@
         saveFilters(defaultFilters());
         syncFilterbar();
         applyFilters();
+      } else if (action === "more") {
+        button.closest(".pjm-more-wrap")?.classList.toggle("pjm-open");
       } else if (action === "export-ris") {
         exportCurrentPage("ris", { scope: "visible" });
       } else if (action === "export-bibtex") {
         exportCurrentPage("bibtex", { scope: "visible" });
+      } else if (action === "export-selected-ris") {
+        exportCurrentPage("ris", { scope: "selected" });
+      } else if (action === "export-selected-bibtex") {
+        exportCurrentPage("bibtex", { scope: "selected" });
       } else if (action === "copy-doi") {
         exportCurrentPage("doi", { scope: "visible" });
       } else if (action === "copy-cite") {
@@ -1906,6 +2136,11 @@
         saveSettings({ ...STATE.settings, pubmedAbstracts: !STATE.settings?.pubmedAbstracts });
         syncFilterbar();
         applyPubmedAbstracts();
+      } else if (action === "settings") {
+        openSettingsPanel();
+      }
+      if (action && action !== "more") {
+        button.closest(".pjm-more-wrap")?.classList.remove("pjm-open");
       }
     });
     bar.addEventListener("input", (event) => {
@@ -1952,7 +2187,33 @@
   }
 
   function resultItemForMetrics(metrics) {
-    return metrics.closest(`.gs_r.gs_or, article.full-docsum, .docsum-content, ${genericResultItemSelector({ loose: true })}`) || metrics.parentElement;
+    if (location.hostname === "pubmed.ncbi.nlm.nih.gov") {
+      return metrics.closest("article.full-docsum")
+        || metrics.closest(".docsum-content")?.closest("article.full-docsum")
+        || metrics.closest(".docsum-content")
+        || metrics.parentElement;
+    }
+    if (location.hostname === "scholar.google.com") {
+      return metrics.closest(".gs_r.gs_or")
+        || metrics.closest(".gs_ri")?.closest(".gs_r.gs_or")
+        || metrics.closest(".gs_ri")
+        || metrics.parentElement;
+    }
+    return metrics.closest(`.gs_r.gs_or, article.full-docsum, ${genericResultItemSelector({ loose: true })}`)
+      || metrics.closest(".docsum-content")?.closest("article.full-docsum")
+      || metrics.closest(".docsum-content")
+      || metrics.parentElement;
+  }
+
+  function isSelectedResultItem(item) {
+    if (!item) return false;
+    if (location.hostname === "scholar.google.com") {
+      return Boolean(item.querySelector(".pjm-scholar-select input[type='checkbox']")?.checked);
+    }
+    if (location.hostname === "pubmed.ncbi.nlm.nih.gov") {
+      return Boolean(item.querySelector("input[type='checkbox']:checked"));
+    }
+    return Boolean(item.querySelector("input[type='checkbox']:checked"));
   }
 
   function applyFilters() {
@@ -1993,6 +2254,7 @@
       const item = resultItemForMetrics(metrics);
       if (scope === "visible") return !item || isVisibleNode(item);
       if (scope === "filtered") return item?.classList.contains("pjm-filter-hit");
+      if (scope === "selected") return isSelectedResultItem(item);
       return true;
     }).map((metrics, index) => {
       const item = resultItemForMetrics(metrics);
@@ -2187,6 +2449,7 @@
       if (!record && !doi && !title) continue;
       result.dataset.pjmProcessed = "1";
       const target = result.querySelector(".gs_ri") || result;
+      ensureScholarSelection(result, target);
       const scholarCited = getScholarCitedCount(result);
       const citationResult = Number.isFinite(scholarCited) ? { count: scholarCited, source: "Google Scholar" } : null;
       insertMetrics(target, record, { scihubTarget: doi, citationResult, match });
@@ -2194,6 +2457,16 @@
       hydrateScholarResultFromOpenAlex(result, target, metrics, title, doi);
       hydrateResultFromCrossref(result, target, metrics, title, doi, record, match);
     }
+  }
+
+  function ensureScholarSelection(result, target) {
+    if (!result || !target || target.querySelector(".pjm-scholar-select")) return;
+    const titleNode = target.querySelector(".gs_rt") || target.firstElementChild || target;
+    const label = document.createElement("label");
+    label.className = "pjm-scholar-select";
+    label.title = "Select for export";
+    label.innerHTML = '<input type="checkbox" data-pjm-scholar-selected="1">';
+    titleNode.insertAdjacentElement("afterbegin", label);
   }
 
   function processGenericResultLists() {
@@ -2378,6 +2651,36 @@
     hydrateResultFromCrossref(document.body, nextPanel, nextPanel.querySelector(`.${BADGE_CLASS}`), title, scihubTarget, record, match);
   }
 
+  function ensureFloatingArticleBar() {
+    if (isResultListPage() || STATE.settings?.showArticleFloatingBar === false) {
+      document.getElementById("pjm-floating-bar")?.remove();
+      return;
+    }
+    const target = getScihubTarget(document);
+    const doi = normalizeDoi(target);
+    if (!target && !doi) {
+      document.getElementById("pjm-floating-bar")?.remove();
+      return;
+    }
+    const bar = document.getElementById("pjm-floating-bar") || document.createElement("div");
+    bar.id = "pjm-floating-bar";
+    bar.className = "pjm-floating-bar";
+    const links = [];
+    const oaUrl = doi ? buildUnpaywallUrl(doi) : "";
+    const sciUrl = buildScihubUrl(target);
+    const peerUrl = pubpeerUrl(target);
+    if (STATE.settings?.showOa !== false && oaUrl) links.push(`<a href="${escapeHtml(oaUrl)}" target="_blank" rel="noopener noreferrer" title="Open via Unpaywall">OA</a>`);
+    if (STATE.settings?.showScihub !== false && sciUrl) links.push(`<a href="${escapeHtml(sciUrl)}" target="_blank" rel="noopener noreferrer" title="Open via Sci-Hub">Sci-Hub</a>`);
+    links.push('<button type="button" data-pjm-floating-cite="1" title="Copy citation">Cite</button>');
+    if (STATE.settings?.showPubpeer !== false && peerUrl) links.push(`<a href="${escapeHtml(peerUrl)}" target="_blank" rel="noopener noreferrer" title="Search PubPeer">PubPeer</a>`);
+    bar.innerHTML = links.join("");
+    bar.onclick = (event) => {
+      if (!event.target.closest("[data-pjm-floating-cite]")) return;
+      exportCurrentPage("cite", { scope: "visible" });
+    };
+    if (!bar.parentElement) document.body.append(bar);
+  }
+
   function processPage() {
     if (!STATE.indexes || STATE.processing) return;
     STATE.processing = true;
@@ -2389,6 +2692,7 @@
       processGenericResultLists();
       processArticlePage();
       processGenericArticlePage();
+      ensureFloatingArticleBar();
       applyPubmedAbstracts();
       applyFilters();
     } finally {
@@ -2408,6 +2712,10 @@
         const bar = document.getElementById("pjm-filterbar");
         alignPubmedFilterbar(bar);
       }, 120);
+    });
+    document.addEventListener("click", (event) => {
+      if (event.target.closest(".pjm-more-wrap")) return;
+      document.querySelector(".pjm-more-wrap.pjm-open")?.classList.remove("pjm-open");
     });
   }
 
