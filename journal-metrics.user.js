@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.11
+// @version      0.3.12
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -1450,12 +1450,25 @@
       document.querySelector("#gs_res_ccl .gs_r .gs_ri") ||
       document.querySelector("#gs_res_ccl_mid .gs_r") ||
       document.querySelector("#gs_res_ccl .gs_r");
+    const sideLink =
+      document.querySelector("#gs_res_ccl_mid .gs_r .gs_ggs") ||
+      document.querySelector("#gs_res_ccl .gs_r .gs_ggs") ||
+      document.querySelector("#gs_res_ccl_mid .gs_r .gs_ggsd") ||
+      document.querySelector("#gs_res_ccl .gs_r .gs_ggsd");
     const parent = bar.parentElement;
     if (!anchor || !parent) return;
 
     const parentRect = parent.getBoundingClientRect();
     const anchorRect = anchor.getBoundingClientRect();
-    const targetWidth = Math.round(anchorRect.width);
+    const sideLinkRect = sideLink?.getBoundingClientRect();
+    const sideRailLeft = sideLinkRect?.width && sideLinkRect.left > anchorRect.left
+      ? sideLinkRect.left
+      : 0;
+    const desiredRightEdge = sideRailLeft
+      ? sideRailLeft - 112
+      : anchorRect.right;
+    const rightEdge = Math.min(parentRect.right - 16, desiredRightEdge);
+    const targetWidth = Math.round(rightEdge - anchorRect.left);
     if (!parentRect.width || !targetWidth || targetWidth < 320) {
       bar.style.marginLeft = "";
       bar.style.width = "";
@@ -1463,7 +1476,7 @@
     }
 
     const left = Math.max(0, Math.round(anchorRect.left - parentRect.left));
-    const right = Math.max(0, Math.round(parentRect.right - anchorRect.right));
+    const right = Math.max(0, Math.round(parentRect.right - rightEdge));
     bar.style.marginLeft = `${left}px`;
     bar.style.width = `calc(100% - ${left + right}px)`;
   }
