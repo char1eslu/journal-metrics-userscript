@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.2
+// @version      0.3.3
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -902,6 +902,24 @@
       .pjm-filterbar-pubmed .pjm-filterbar-spacer {
         flex: 1 1 auto;
       }
+      .pjm-filterbar-scholar {
+        display: inline-flex;
+        width: auto;
+        max-width: 100%;
+        margin: 8px 0 18px;
+        padding: 0;
+        gap: 5px;
+      }
+      .pjm-filterbar-scholar .pjm-filterbar-group {
+        gap: 5px;
+      }
+      .pjm-filterbar-scholar .pjm-filterbar-spacer {
+        flex: 0 0 1px;
+        width: 1px;
+        height: 20px;
+        margin: 0 6px;
+        background: #e5e7eb;
+      }
       .pjm-filterbar button,
       .pjm-filterbar input {
         border: 1px solid #cbd5e1;
@@ -937,6 +955,25 @@
       }
       .pjm-filterbar-pubmed input[type="number"] {
         width: 56px;
+      }
+      .pjm-filterbar-scholar button,
+      .pjm-filterbar-scholar input[type="number"] {
+        min-width: 0 !important;
+        min-height: 0 !important;
+        height: 24px !important;
+        border-radius: 4px;
+        font-size: 12px !important;
+        line-height: 18px !important;
+        padding: 2px 8px !important;
+      }
+      .pjm-filterbar-scholar input[type="number"] {
+        width: 48px !important;
+        padding: 2px 4px !important;
+      }
+      .pjm-filterbar-scholar label {
+        gap: 3px;
+        font-size: 12px;
+        line-height: 24px;
       }
       @media (max-width: 700px) {
         .pjm-filterbar-pubmed .pjm-filterbar-spacer {
@@ -1214,6 +1251,13 @@
   }
 
   function placeFilterbar(bar) {
+    if (location.hostname === "scholar.google.com") {
+      const list = document.querySelector("#gs_res_ccl_mid") || document.querySelector("#gs_res_ccl");
+      if (list) {
+        list.insertAdjacentElement("beforebegin", bar);
+        return;
+      }
+    }
     if (location.hostname === "pubmed.ncbi.nlm.nih.gov") {
       const list = document.querySelector(".search-results-chunks");
       if (list) {
@@ -1258,7 +1302,10 @@
     }
     const bar = document.createElement("div");
     bar.id = "pjm-filterbar";
-    bar.className = `pjm-filterbar${location.hostname === "pubmed.ncbi.nlm.nih.gov" ? " pjm-filterbar-pubmed" : ""}`;
+    const classNames = ["pjm-filterbar"];
+    if (location.hostname === "pubmed.ncbi.nlm.nih.gov") classNames.push("pjm-filterbar-pubmed");
+    if (location.hostname === "scholar.google.com") classNames.push("pjm-filterbar-scholar");
+    bar.className = classNames.join(" ");
     bar.innerHTML = `
       <span class="pjm-filterbar-group">
         <button type="button" data-pjm-filter="q1" title="Highlight JCR Q1 journals">Q1</button>
