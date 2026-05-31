@@ -65,6 +65,10 @@ Google Scholar still has no stable official public API for this use case, so the
 
 PubMed-backed items are checked against NCBI ESummary for publication-status warnings. A red status chip appears only when PubMed reports a retraction, retraction notice, or expression of concern. DOI-backed items also get a compact PubPeer search entry.
 
+Crossref update metadata is checked for DOI-backed items and can surface `Correction`, `Retraction`, or `Update` chips when Crossref reports a relation. When a result has a title but no DOI, the script can resolve the DOI through Crossref only when the returned title is a high-confidence match.
+
+Journal metric hover text includes the matching route, such as ISSN, journal title, abbreviation, or low-confidence page-text matching.
+
 ## Sci-Hub Domains
 
 The userscript loads `scihub-domains.json` weekly and opens the first configured domain with the page DOI or PMID. A GitHub Actions workflow discovers fresh candidates every Monday, probes that newly discovered set, and keeps reachable domains first. Discovery currently scrapes these candidate sources:

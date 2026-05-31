@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.17
+// @version      0.3.18
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -103,6 +103,7 @@
 // @connect      icite.od.nih.gov
 // @connect      api.unpaywall.org
 // @connect      eutils.ncbi.nlm.nih.gov
+// @connect      api.crossref.org
 // @connect      doi.org
 // @connect      localhost
 // @connect      127.0.0.1
@@ -126,6 +127,7 @@
     citationsCacheKey: "journal-metrics:citations:v2",
     unpaywallCacheKey: "journal-metrics:unpaywall:v2",
     riskCacheKey: "journal-metrics:risk:v1",
+    crossrefCacheKey: "journal-metrics:crossref:v1",
     settingsKey: "journal-metrics:settings:v1",
     filterStateKey: "journal-metrics:filters:v1",
     unpaywallEmail: "char1eslu@users.noreply.github.com",
@@ -134,6 +136,7 @@
     citationsCacheMs: 7 * 24 * 60 * 60 * 1000,
     unpaywallCacheMs: 7 * 24 * 60 * 60 * 1000,
     riskCacheMs: 7 * 24 * 60 * 60 * 1000,
+    crossrefCacheMs: 7 * 24 * 60 * 60 * 1000,
     fallbackScihubDomains: ["https://sci-hub.ren", "https://sci-hub.ee", "https://sci-hub.shop", "https://sci-hub.al", "https://sci-hub.mk", "https://sci-hub.vg", "https://sci-hub.st"],
     fallbackData: {
       meta: {
@@ -248,11 +251,16 @@
     return style.display !== "none" && style.visibility !== "hidden" && !node.hidden;
   }
 
-  function journalMetricDetails(record) {
+  function journalMetricDetails(record, match = null) {
     if (!record) return "";
     const details = [];
     const updated = STATE.data?.meta?.updated;
     if (record.journal) details.push(record.journal);
+    if (match?.method) {
+      const confidence = match.confidence ? `, ${match.confidence}` : "";
+      const source = match.source ? ` (${match.source})` : "";
+      details.push(`Matched by ${match.method}${confidence}${source}`);
+    }
     if (record.if || record.impactFactor || record.IF) details.push(`IF: ${record.if || record.impactFactor || record.IF}`);
     if (record.jcr || record.jcrQuartile) details.push(`JCR: ${record.jcr || record.jcrQuartile}`);
     if (record.cas) details.push(`CAS: ${record.cas}区`);
@@ -540,6 +548,18 @@
     GM_setValue(CONFIG.riskCacheKey, JSON.stringify(cache));
   }
 
+  function getCrossrefCache() {
+    try {
+      return JSON.parse(GM_getValue(CONFIG.crossrefCacheKey, "{}")) || {};
+    } catch {
+      return {};
+    }
+  }
+
+  function setCrossrefCache(cache) {
+    GM_setValue(CONFIG.crossrefCacheKey, JSON.stringify(cache));
+  }
+
   function normalizePubmedStatus(summary) {
     const pubTypes = (summary?.pubtype || []).map((item) => String(item || ""));
     const references = summary?.references || [];
@@ -575,6 +595,88 @@
     };
     cache[pmid] = result;
     setRiskCache(cache);
+    return result;
+  }
+
+  function crossrefStatusFromRelation(relation) {
+    const labels = [];
+    for (const [type, items] of Object.entries(relation || {})) {
+      const text = String(type || "").toLowerCase();
+      if (/correction|corrects|erratum/.test(text)) labels.push("Correction");
+      if (/retraction|retracts|retracted/.test(text)) labels.push("Retraction");
+      if (/update|updated|expression-of-concern|concern/.test(text)) labels.push("Update");
+      for (const item of asArray(items)) {
+        const id = String(item?.id || item?.["id-type"] || "").toLowerCase();
+        if (/erratum|correction/.test(id)) labels.push("Correction");
+        if (/retraction/.test(id)) labels.push("Retraction");
+        if (/concern|update/.test(id)) labels.push("Update");
+      }
+    }
+    return unique(labels);
+  }
+
+  function crossrefStatusFromUpdates(item) {
+    const labels = [];
+    for (const update of [...asArray(item?.["update-to"]), ...asArray(item?.["updated-by"])]) {
+      const type = String(update?.type || update?.label || "").toLowerCase();
+      if (/correction|erratum/.test(type)) labels.push("Correction");
+      if (/retraction/.test(type)) labels.push("Retraction");
+      if (/update|concern/.test(type)) labels.push("Update");
+    }
+    return labels;
+  }
+
+  function getCrossrefSourceInfo(item, queryTitle = "") {
+    const title = firstText(...asArray(item?.title));
+    const journal = firstText(...asArray(item?.["container-title"]), ...asArray(item?.["short-container-title"]));
+    const issn = firstText(...asArray(item?.ISSN), item?.["ISSN-L"]);
+    const doi = normalizeDoi(item?.DOI || item?.URL || "");
+    const status = unique([
+      ...crossrefStatusFromRelation(item?.relation || {}),
+      ...crossrefStatusFromUpdates(item),
+    ]);
+    return {
+      title,
+      journal,
+      issn,
+      doi,
+      status,
+      similarity: queryTitle ? titleSimilarity(queryTitle, title) : 0,
+      source: "Crossref",
+      time: Date.now(),
+    };
+  }
+
+  async function fetchCrossrefByTitle(title) {
+    const cleanTitle = String(title || "").replace(/\s+/g, " ").trim();
+    if (!cleanTitle) return null;
+    const key = `title:${normalizeKey(cleanTitle).toLowerCase()}`;
+    const cache = getCrossrefCache();
+    const cached = cache[key];
+    if (cached && Date.now() - cached.time < CONFIG.crossrefCacheMs) return cached;
+
+    const url = `https://api.crossref.org/works?query.title=${encodeURIComponent(cleanTitle)}&rows=1&select=DOI,title,container-title,short-container-title,ISSN,relation,URL,update-to,updated-by`;
+    const data = await loadJsonViaGm(url);
+    const item = Array.isArray(data?.message?.items) ? data.message.items[0] : null;
+    const result = item ? getCrossrefSourceInfo(item, cleanTitle) : null;
+    cache[key] = result || { time: Date.now() };
+    setCrossrefCache(cache);
+    return result;
+  }
+
+  async function fetchCrossrefByDoi(target) {
+    const doi = normalizeDoi(target);
+    if (!doi) return null;
+    const key = `doi:${doi.toLowerCase()}`;
+    const cache = getCrossrefCache();
+    const cached = cache[key];
+    if (cached && Date.now() - cached.time < CONFIG.crossrefCacheMs) return cached;
+
+    const url = `https://api.crossref.org/works/${encodeURIComponent(doi)}`;
+    const data = await loadJsonViaGm(url);
+    const result = data?.message ? getCrossrefSourceInfo(data.message) : null;
+    cache[key] = result || { time: Date.now() };
+    setCrossrefCache(cache);
     return result;
   }
 
@@ -942,32 +1044,49 @@
   }
 
   function lookupJournal(query) {
-    if (!query || !STATE.indexes) return null;
+    return lookupJournalWithMatch(query).record;
+  }
+
+  function lookupJournalWithMatch(query) {
+    if (!query || !STATE.indexes) return { record: null, match: null };
     const issn = normalizeIssn(query.issn);
-    if (issn && STATE.indexes.byIssn.has(issn)) return STATE.indexes.byIssn.get(issn);
+    if (issn && STATE.indexes.byIssn.has(issn)) {
+      return { record: STATE.indexes.byIssn.get(issn), match: { method: "ISSN", confidence: "high", source: issn } };
+    }
 
     const candidates = unique([query.journal, query.abbrev, ...(query.aliases || [])]);
     for (const candidate of candidates) {
       const key = normalizeKey(candidate);
-      if (key && STATE.indexes.byName.has(key)) return STATE.indexes.byName.get(key);
+      if (key && STATE.indexes.byName.has(key)) {
+        return { record: STATE.indexes.byName.get(key), match: { method: candidate === query.abbrev ? "abbreviation" : "journal title", confidence: "high", source: candidate } };
+      }
     }
 
-    return null;
+    return { record: null, match: null };
   }
 
   function findJournalInText(text) {
+    return findJournalInTextWithMatch(text).record;
+  }
+
+  function findJournalInTextWithMatch(text) {
     const normalizedText = normalizeKey(text);
-    if (!normalizedText) return null;
+    if (!normalizedText) return { record: null, match: null };
     let best = null;
     let bestLength = 0;
+    let bestName = "";
     for (const [name, record] of STATE.indexes.byName.entries()) {
       if (name.length < 8 || name.length <= bestLength) continue;
       if (normalizedText.includes(name)) {
         best = record;
         bestLength = name.length;
+        bestName = name;
       }
     }
-    return best;
+    return {
+      record: best,
+      match: best ? { method: "page text", confidence: "low", source: bestName } : null,
+    };
   }
 
   function titleTokens(value) {
@@ -1026,18 +1145,44 @@
     try {
       const info = await fetchOpenAlexByTitle(title);
       if (!info || titleSimilarity(title, info.title) < 0.72) return;
-      const record = lookupJournal({ journal: info.journal, issn: info.issn, aliases: [info.journal] });
+      const lookup = lookupJournalWithMatch({ journal: info.journal, issn: info.issn, aliases: [info.journal] });
+      const { record, match } = lookup;
       const resolvedTarget = info.doi || scihubTarget;
       if (!record && !resolvedTarget) return;
       const scholarCited = getScholarCitedCount(result);
       const citationResult = Number.isFinite(scholarCited) ? { count: scholarCited, source: "Google Scholar" } : null;
       if (metrics) {
-        updateMetrics(metrics, record, { scihubTarget: resolvedTarget, citationResult, root: result });
+        updateMetrics(metrics, record, { scihubTarget: resolvedTarget, citationResult, match, root: result });
       } else {
-        insertMetrics(targetNode, record, { scihubTarget: resolvedTarget, citationResult });
+        insertMetrics(targetNode, record, { scihubTarget: resolvedTarget, citationResult, match });
       }
     } catch {
       // Keep the locally parsed result when OpenAlex title resolution fails.
+    }
+  }
+
+  async function hydrateResultFromCrossref(container, targetNode, metrics, title, currentTarget = "", currentRecord = null, currentMatch = null) {
+    if (!title || normalizeDoi(currentTarget) || container.dataset.pjmCrossrefHydrated === "1") return;
+    container.dataset.pjmCrossrefHydrated = "1";
+    try {
+      const info = await fetchCrossrefByTitle(title);
+      if (!info || !info.doi || info.similarity < 0.82) return;
+      const lookup = lookupJournalWithMatch({ journal: info.journal, issn: info.issn, aliases: [info.journal] });
+      const record = lookup.record || currentRecord;
+      const match = lookup.match || currentMatch;
+      if (!record && !info.doi) return;
+      const options = {
+        scihubTarget: info.doi,
+        citationTarget: info.doi,
+        statuses: info.status,
+        statusSource: "Crossref",
+        match,
+        root: container,
+      };
+      if (metrics) updateMetrics(metrics, record, options);
+      else insertMetrics(targetNode, record, options);
+    } catch {
+      // Keep the locally parsed result when Crossref title resolution fails.
     }
   }
 
@@ -1241,6 +1386,14 @@
         color: #334155;
         text-decoration: none !important;
       }
+      .pjm-update {
+        border-color: #0ea5e9;
+        background: #f0f9ff;
+        color: #075985;
+      }
+      .pjm-update.pjm-loading {
+        display: none;
+      }
       .pjm-cited { border-color: #7c3aed; background: #f5f3ff; color: #5b21b6; }
       .pjm-cited.pjm-loading { border-color: #c4b5fd; background: #faf5ff; color: #7e22ce; }
       .pjm-cited.pjm-failed { border-color: #cbd5e1; background: #f8fafc; color: #64748b; }
@@ -1300,9 +1453,9 @@
     return `<span class="pjm-chip ${className}"><strong>${escapeHtml(label)}</strong>${escapeHtml(value)}</span>`;
   }
 
-  function metricChip(label, value, className, record) {
+  function metricChip(label, value, className, record, match) {
     if (value === undefined || value === null || value === "") return "";
-    const title = journalMetricDetails(record);
+    const title = journalMetricDetails(record, match);
     return `<span class="pjm-chip ${className || ""}" title="${escapeHtml(title)}"><strong>${escapeHtml(label)}</strong>${escapeHtml(value)}</span>`;
   }
 
@@ -1345,6 +1498,19 @@
     return `<a class="pjm-chip pjm-risk pjm-loading" href="https://pubmed.ncbi.nlm.nih.gov/${escapeHtml(normalizePmid(target))}/" target="_blank" rel="noopener noreferrer" data-pjm-risk-target="${escapeHtml(target)}" title="Checking PubMed publication status">${escapeHtml("Status...")}</a>`;
   }
 
+  function statusChip(statuses = [], source = "") {
+    const status = asArray(statuses).find(Boolean);
+    if (!status) return "";
+    const className = /retraction|retracted/i.test(status) ? "pjm-risk" : "pjm-update";
+    const title = source ? `${status} status from ${source}` : `${status} status`;
+    return `<span class="pjm-chip ${className}" title="${escapeHtml(title)}">${escapeHtml(status)}</span>`;
+  }
+
+  function crossrefStatusChip(target) {
+    if (!normalizeDoi(target)) return "";
+    return `<span class="pjm-chip pjm-update pjm-loading" data-pjm-crossref-status-target="${escapeHtml(target)}" title="Checking Crossref update status">${escapeHtml("Update...")}</span>`;
+  }
+
   function escapeHtml(value) {
     return String(value)
       .replace(/&/g, "&amp;")
@@ -1369,17 +1535,17 @@
     if (record) {
       const casValue = record.cas ? `${record.cas}区` : "";
       parts.push(
-        metricChip("IF", record.if || record.impactFactor || record.IF, "", record),
-        metricChip("JCR", record.jcr || record.jcrQuartile, quartileClass(record.jcr || record.jcrQuartile), record),
-        metricChip("CAS", casValue, casClass(casValue), record)
+        metricChip("IF", record.if || record.impactFactor || record.IF, "", record, options.match),
+        metricChip("JCR", record.jcr || record.jcrQuartile, quartileClass(record.jcr || record.jcrQuartile), record, options.match),
+        metricChip("CAS", casValue, casClass(casValue), record, options.match)
       );
 
-      if (record.casCategory) parts.push(metricChip("大类", record.casCategory, "", record));
+      if (record.casCategory) parts.push(metricChip("大类", record.casCategory, "", record, options.match));
       if (record.top === true || String(record.top).toLowerCase() === "true" || record.top === "是") {
-        parts.push(metricChip("", "Top", "pjm-top", record));
+        parts.push(metricChip("", "Top", "pjm-top", record, options.match));
       }
       if (record.review === true || String(record.review).toLowerCase() === "true" || record.review === "是") {
-        parts.push(metricChip("", "Review", "", record));
+        parts.push(metricChip("", "Review", "", record, options.match));
       }
       if (record.warning) {
         parts.push(chip("预警", record.warning, "pjm-warning"));
@@ -1390,7 +1556,11 @@
       parts.push(citedChip(citationTarget, options.citationResult));
       parts.push(riskChip(citationTarget));
     }
+    if (options.statuses?.length) {
+      parts.push(statusChip(options.statuses, options.statusSource));
+    }
     if (options.scihubTarget) {
+      if (!options.statuses?.length) parts.push(crossrefStatusChip(options.scihubTarget));
       parts.push(unpaywallChip(options.scihubTarget));
       parts.push(scihubChip(options.scihubTarget));
       parts.push(pubpeerChip(options.scihubTarget));
@@ -1403,10 +1573,11 @@
     return `<span class="${BADGE_CLASS}${options.inline ? " pjm-inline" : ""}" title="${escapeHtml(record?.journal || "")}">${parts.join("")}${source}</span>`;
   }
 
-  function annotateMetrics(metrics, record, target) {
+  function annotateMetrics(metrics, record, target, options = {}) {
     if (!metrics) return;
     metrics.dataset.pjmRecord = record ? JSON.stringify(record) : "";
     metrics.dataset.pjmTarget = String(target || "");
+    metrics.dataset.pjmMatch = options.match ? JSON.stringify(options.match) : "";
     if (record?.journal) metrics.dataset.pjmJournal = record.journal;
   }
 
@@ -1417,7 +1588,7 @@
     wrapper.innerHTML = renderMetrics(record, options);
     const metrics = wrapper.firstElementChild;
     if (!metrics) return;
-    annotateMetrics(metrics, record, options.scihubTarget || options.citationTarget);
+    annotateMetrics(metrics, record, options.scihubTarget || options.citationTarget, options);
 
     if (options.after) {
       target.insertAdjacentElement("afterend", metrics);
@@ -1429,6 +1600,7 @@
     hydrateCitationChips(metrics);
     hydrateUnpaywallChips(metrics);
     hydrateRiskChips(metrics);
+    hydrateCrossrefStatusChips(metrics);
     applyFilters();
   }
 
@@ -1438,11 +1610,12 @@
     wrapper.innerHTML = renderMetrics(record, options);
     const next = wrapper.firstElementChild;
     if (!next) return;
-    annotateMetrics(next, record, options.scihubTarget || options.citationTarget);
+    annotateMetrics(next, record, options.scihubTarget || options.citationTarget, options);
     metrics.replaceWith(next);
     hydrateCitationChips(options.root || document);
     hydrateUnpaywallChips(options.root || document);
     hydrateRiskChips(options.root || document);
+    hydrateCrossrefStatusChips(options.root || document);
     applyFilters();
   }
 
@@ -1534,6 +1707,29 @@
         }
         chipNode.textContent = result.label;
         chipNode.title = result.details ? `PubMed status: ${result.details}` : "PubMed publication status";
+      }).catch(() => {
+        chipNode.remove();
+      });
+    }
+  }
+
+  function hydrateCrossrefStatusChips(root = document) {
+    const chips = root.querySelectorAll?.(".pjm-update[data-pjm-crossref-status-target]") || [];
+    for (const chipNode of chips) {
+      if (chipNode.dataset.pjmCrossrefStatusLoaded === "1") continue;
+      chipNode.dataset.pjmCrossrefStatusLoaded = "1";
+      const target = chipNode.dataset.pjmCrossrefStatusTarget;
+      fetchCrossrefByDoi(target).then((result) => {
+        chipNode.classList.remove("pjm-loading");
+        const status = result?.status?.[0] || "";
+        if (!status) {
+          chipNode.remove();
+          return;
+        }
+        chipNode.textContent = status;
+        chipNode.classList.toggle("pjm-risk", /retraction|retracted/i.test(status));
+        chipNode.classList.toggle("pjm-update", !/retraction|retracted/i.test(status));
+        chipNode.title = `Crossref update status: ${result.status.join(", ")}`;
       }).catch(() => {
         chipNode.remove();
       });
@@ -1967,11 +2163,12 @@
         article.querySelector(".docsum-citation");
 
       const abbrev = parseJournalAbbrevFromCitation(journalNode?.textContent || "");
-      const record = lookupJournal({ abbrev, journal: abbrev });
+      const lookup = lookupJournalWithMatch({ abbrev, journal: abbrev });
+      const { record, match } = lookup;
       const scihubTarget = getScihubTarget(article);
       const citationTarget = getPubmedId(article) || scihubTarget;
       const citationContainer = article.querySelector(".docsum-citation") || journalNode?.parentElement || article;
-      insertMetrics(citationContainer, record, { scihubTarget, citationTarget });
+      insertMetrics(citationContainer, record, { scihubTarget, citationTarget, match });
     }
     applyPubmedAbstracts();
   }
@@ -1985,14 +2182,17 @@
       const title = getScholarResultTitle(result);
       const doi = getArticleDoi(result);
       const journal = maybeJournalFromScholarMeta(meta);
-      const record = lookupJournal({ journal, abbrev: journal });
+      const lookup = lookupJournalWithMatch({ journal, abbrev: journal });
+      const { record, match } = lookup;
       if (!record && !doi && !title) continue;
       result.dataset.pjmProcessed = "1";
       const target = result.querySelector(".gs_ri") || result;
       const scholarCited = getScholarCitedCount(result);
       const citationResult = Number.isFinite(scholarCited) ? { count: scholarCited, source: "Google Scholar" } : null;
-      insertMetrics(target, record, { scihubTarget: doi, citationResult });
-      hydrateScholarResultFromOpenAlex(result, target, target.querySelector(`.${BADGE_CLASS}`), title, doi);
+      insertMetrics(target, record, { scihubTarget: doi, citationResult, match });
+      const metrics = target.querySelector(`.${BADGE_CLASS}`);
+      hydrateScholarResultFromOpenAlex(result, target, metrics, title, doi);
+      hydrateResultFromCrossref(result, target, metrics, title, doi, record, match);
     }
   }
 
@@ -2015,10 +2215,13 @@
         item.querySelector(".venue")?.textContent,
         item.querySelector(".journal")?.textContent
       );
-      const record = lookupJournal({ journal, abbrev: journal });
+      const lookup = lookupJournalWithMatch({ journal, abbrev: journal });
+      const { record, match } = lookup;
       if (!record && !doi) continue;
       item.dataset.pjmProcessed = "1";
-      insertMetrics(item, record, { scihubTarget: doi });
+      insertMetrics(item, record, { scihubTarget: doi, match });
+      const title = firstText(item.querySelector("h1, h2, h3, .title, .paper-title, [data-test='title'], [data-testid='title']")?.textContent);
+      hydrateResultFromCrossref(item, item, item.querySelector(`.${BADGE_CLASS}`), title, doi, record, match);
     }
   }
 
@@ -2058,7 +2261,8 @@
 
   function processArticlePage() {
     if (location.hostname !== "pubmed.ncbi.nlm.nih.gov") return;
-    const record = lookupJournal(getArticlePageQuery());
+    const lookup = lookupJournalWithMatch(getArticlePageQuery());
+    const { record, match } = lookup;
     if (!record) return;
 
     const citationBlocks = document.querySelectorAll(".article-citation");
@@ -2066,14 +2270,14 @@
       if (block.dataset.pjmProcessed === "1") continue;
       block.dataset.pjmProcessed = "1";
       const scihubTarget = getScihubTarget(block);
-      insertMetrics(block, record, { showSource: true, scihubTarget, citationTarget: getPubmedId(document) || scihubTarget });
+      insertMetrics(block, record, { showSource: true, scihubTarget, citationTarget: getPubmedId(document) || scihubTarget, match });
     }
 
     const shortCitation = document.querySelector(".short-citation .citation-journal");
     if (shortCitation && shortCitation.dataset.pjmProcessed !== "1") {
       shortCitation.dataset.pjmProcessed = "1";
       const scihubTarget = getScihubTarget(document);
-      insertMetrics(shortCitation, record, { inline: true, after: true, scihubTarget, citationTarget: getPubmedId(document) || scihubTarget });
+      insertMetrics(shortCitation, record, { inline: true, after: true, scihubTarget, citationTarget: getPubmedId(document) || scihubTarget, match });
     }
   }
 
@@ -2142,7 +2346,10 @@
     if (document.querySelector("article.full-docsum, .docsum-content")) return;
 
     const query = getGenericArticleQuery();
-    const record = lookupJournal(query) || findJournalInText(document.body?.textContent || "");
+    const directLookup = lookupJournalWithMatch(query);
+    const textLookup = directLookup.record ? { record: null, match: null } : findJournalInTextWithMatch(document.body?.textContent || "");
+    const record = directLookup.record || textLookup.record;
+    const match = directLookup.match || textLookup.match;
     const scihubTarget = getScihubTarget(document);
     const panel = document.querySelector(".pjm-panel");
     const existingMetrics = panel?.querySelector(`.${BADGE_CLASS}`);
@@ -2155,7 +2362,7 @@
         } catch {
           previousRecord = null;
         }
-        updateMetrics(existingMetrics, record || previousRecord, { showSource: true, scihubTarget, root: panel || document });
+        updateMetrics(existingMetrics, record || previousRecord, { showSource: true, scihubTarget, match, root: panel || document });
       }
       return;
     }
@@ -2166,7 +2373,9 @@
     const nextPanel = panel || document.createElement("div");
     nextPanel.className = "pjm-panel";
     if (!panel) findGenericInsertTarget().insertAdjacentElement("afterend", nextPanel);
-    insertMetrics(nextPanel, record, { showSource: true, scihubTarget });
+    insertMetrics(nextPanel, record, { showSource: true, scihubTarget, match });
+    const title = firstText(getMetaContent("citation_title", "dc.Title", "dc.title", "og:title"), document.querySelector("h1")?.textContent);
+    hydrateResultFromCrossref(document.body, nextPanel, nextPanel.querySelector(`.${BADGE_CLASS}`), title, scihubTarget, record, match);
   }
 
   function processPage() {
