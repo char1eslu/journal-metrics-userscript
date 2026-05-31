@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.4
+// @version      0.3.5
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -100,6 +100,7 @@
 // @connect      gist.githubusercontent.com
 // @connect      api.openalex.org
 // @connect      api.semanticscholar.org
+// @connect      icite.od.nih.gov
 // @connect      api.unpaywall.org
 // @connect      doi.org
 // @connect      localhost
@@ -121,7 +122,7 @@
     scihubDomainsCacheKey: "journal-metrics:scihub-domains:v1",
     scihubDomainsCacheTimeKey: "journal-metrics:scihub-domains-time:v1",
     scihubManualDomainsKey: "journal-metrics:scihub-manual-domains:v1",
-    citationsCacheKey: "journal-metrics:citations:v1",
+    citationsCacheKey: "journal-metrics:citations:v2",
     unpaywallCacheKey: "journal-metrics:unpaywall:v1",
     filterStateKey: "journal-metrics:filters:v1",
     unpaywallEmail: "journal-metrics@example.com",
@@ -269,6 +270,13 @@
       .trim();
   }
 
+  function normalizePmid(value) {
+    const text = String(value || "").replace(/\s+/g, " ").trim();
+    const explicit = text.match(/\bPMID\s*:?\s*(\d{5,9})\b/i);
+    if (explicit) return explicit[1];
+    return /^\d{5,9}$/.test(text) ? text : "";
+  }
+
   function getMetaContent(...names) {
     for (const name of names) {
       const selector = [
@@ -382,9 +390,9 @@
   }
 
   function getPubmedId(root = document) {
-    const metaPmid = getMetaContent("citation_pmid");
+    const metaPmid = normalizePmid(getMetaContent("citation_pmid"));
     if (metaPmid) return String(metaPmid).trim();
-    return root.querySelector?.(".docsum-pmid")?.textContent?.trim() || "";
+    return normalizePmid(root.querySelector?.(".docsum-pmid")?.textContent || "");
   }
 
   function getScihubTarget(root = document) {
@@ -448,6 +456,34 @@
     return String(target || "").trim().toLowerCase();
   }
 
+  function citationSourceLabel(source) {
+    const cleanSource = String(source || "").trim().toLowerCase();
+    if (cleanSource === "google scholar") return "GS";
+    if (cleanSource === "nih icite") return "NIH";
+    if (cleanSource === "openalex") return "OA";
+    if (cleanSource === "semantic scholar") return "S2";
+    return "Cited";
+  }
+
+  function citationSourceTitle(source) {
+    const cleanSource = String(source || "").trim();
+    if (cleanSource === "NIH iCite") return "Citation count from NIH iCite";
+    if (cleanSource === "Google Scholar") return "Citation count shown on Google Scholar result";
+    return cleanSource ? `Citation count from ${cleanSource}` : "Citation count";
+  }
+
+  function shortMetric(value) {
+    return Number.parseFloat(value).toFixed(1).replace(/\.0$/, "");
+  }
+
+  function citationResultTitle(result) {
+    const title = citationSourceTitle(result?.source);
+    const details = [];
+    if (Number.isFinite(result?.rcr)) details.push(`RCR ${shortMetric(result.rcr)}`);
+    if (Number.isFinite(result?.citationsPerYear)) details.push(`${shortMetric(result.citationsPerYear)}/year`);
+    return details.length ? `${title}; ${details.join("; ")}` : title;
+  }
+
   function getCitationCache() {
     try {
       return JSON.parse(GM_getValue(CONFIG.citationsCacheKey, "{}")) || {};
@@ -465,8 +501,8 @@
     if (doi) {
       return `https://api.openalex.org/works/https://doi.org/${encodeURIComponent(doi)}?select=id,doi,cited_by_count`;
     }
-    const pmid = String(target || "").trim();
-    if (/^\d+$/.test(pmid)) {
+    const pmid = normalizePmid(target);
+    if (pmid) {
       return `https://api.openalex.org/works?filter=pmid:${encodeURIComponent(pmid)}&select=id,doi,cited_by_count&per-page=1`;
     }
     return "";
@@ -509,11 +545,17 @@
     if (doi) {
       return `https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(doi)}?fields=citationCount,externalIds,url`;
     }
-    const pmid = String(target || "").trim();
-    if (/^\d+$/.test(pmid)) {
+    const pmid = normalizePmid(target);
+    if (pmid) {
       return `https://api.semanticscholar.org/graph/v1/paper/PMID:${encodeURIComponent(pmid)}?fields=citationCount,externalIds,url`;
     }
     return "";
+  }
+
+  function buildIciteUrl(target) {
+    const pmid = normalizePmid(target);
+    if (!pmid) return "";
+    return `https://icite.od.nih.gov/api/pubs?pmids=${encodeURIComponent(pmid)}&fl=pmid,doi,citation_count,relative_citation_ratio,citations_per_year`;
   }
 
   async function fetchCitationCount(target) {
@@ -523,6 +565,28 @@
     const cache = getCitationCache();
     const cached = cache[key];
     if (cached && Date.now() - cached.time < CONFIG.citationsCacheMs) return cached;
+
+    const iciteUrl = buildIciteUrl(target);
+    if (iciteUrl) {
+      try {
+        const data = await loadJsonViaGm(iciteUrl);
+        const pub = Array.isArray(data.data) ? data.data[0] : null;
+        if (Number.isFinite(pub?.citation_count)) {
+          const result = {
+            count: pub.citation_count,
+            source: "NIH iCite",
+            rcr: Number.isFinite(pub.relative_citation_ratio) ? pub.relative_citation_ratio : null,
+            citationsPerYear: Number.isFinite(pub.citations_per_year) ? pub.citations_per_year : null,
+            time: Date.now(),
+          };
+          cache[key] = result;
+          setCitationCache(cache);
+          return result;
+        }
+      } catch {
+        // Fall through to open citation indexes.
+      }
+    }
 
     const openAlexUrl = buildOpenAlexUrl(target);
     if (openAlexUrl) {
@@ -830,6 +894,18 @@
       .trim();
   }
 
+  function getScholarCitedCount(result) {
+    const anchors = result.querySelectorAll("a");
+    for (const anchor of anchors) {
+      const text = (anchor.textContent || "").replace(/\s+/g, " ").trim();
+      const match = text.match(/(?:Cited by|被引用(?:次数)?\s*[:：]?)\s*([\d,]+)/i);
+      if (!match) continue;
+      const count = Number.parseInt(match[1].replace(/,/g, ""), 10);
+      if (Number.isFinite(count)) return count;
+    }
+    return null;
+  }
+
   async function hydrateScholarResultFromOpenAlex(result, targetNode, metrics, title, scihubTarget) {
     if (!title || result.dataset.pjmOpenalexHydrated === "1") return;
     result.dataset.pjmOpenalexHydrated = "1";
@@ -839,10 +915,12 @@
       const record = lookupJournal({ journal: info.journal, issn: info.issn, aliases: [info.journal] });
       const resolvedTarget = info.doi || scihubTarget;
       if (!record && !resolvedTarget) return;
+      const scholarCited = getScholarCitedCount(result);
+      const citationResult = Number.isFinite(scholarCited) ? { count: scholarCited, source: "Google Scholar" } : null;
       if (metrics) {
-        updateMetrics(metrics, record, { scihubTarget: resolvedTarget, root: result });
+        updateMetrics(metrics, record, { scihubTarget: resolvedTarget, citationResult, root: result });
       } else {
-        insertMetrics(targetNode, record, { scihubTarget: resolvedTarget });
+        insertMetrics(targetNode, record, { scihubTarget: resolvedTarget, citationResult });
       }
     } catch {
       // Keep the locally parsed result when OpenAlex title resolution fails.
@@ -1079,9 +1157,13 @@
     return `<a class="pjm-chip pjm-unpaywall pjm-loading" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" data-pjm-unpaywall-target="${escapeHtml(target)}" title="Checking Unpaywall">${escapeHtml("Unpaywall")}</a>`;
   }
 
-  function citedChip(target) {
+  function citedChip(target, result = null) {
+    if (result && Number.isFinite(result.count)) {
+      const label = citationSourceLabel(result.source);
+      return `<span class="pjm-chip pjm-cited" title="${escapeHtml(citationResultTitle(result))}"><strong>${escapeHtml(label)}</strong>${escapeHtml(String(result.count))}</span>`;
+    }
     if (!target) return "";
-    return `<span class="pjm-chip pjm-cited pjm-loading" data-pjm-citation-target="${escapeHtml(target)}" title="Citation count from OpenAlex or Semantic Scholar"><strong>Cited</strong>...</span>`;
+    return `<span class="pjm-chip pjm-cited pjm-loading" data-pjm-citation-target="${escapeHtml(target)}" title="Checking citation count"><strong>Cited</strong>...</span>`;
   }
 
   function escapeHtml(value) {
@@ -1124,8 +1206,11 @@
         parts.push(chip("预警", record.warning, "pjm-warning"));
       }
     }
+    const citationTarget = options.citationTarget || options.scihubTarget;
+    if (citationTarget || options.citationResult) {
+      parts.push(citedChip(citationTarget, options.citationResult));
+    }
     if (options.scihubTarget) {
-      parts.push(citedChip(options.scihubTarget));
       parts.push(unpaywallChip(options.scihubTarget));
       parts.push(scihubChip(options.scihubTarget));
     }
@@ -1146,12 +1231,12 @@
 
   function insertMetrics(target, record, options = {}) {
     if (!target || target.querySelector?.(`.${BADGE_CLASS}`)) return;
-    if (!record && !options.scihubTarget) return;
+    if (!record && !options.scihubTarget && !options.citationTarget) return;
     const wrapper = document.createElement(options.inline ? "span" : "div");
     wrapper.innerHTML = renderMetrics(record, options);
     const metrics = wrapper.firstElementChild;
     if (!metrics) return;
-    annotateMetrics(metrics, record, options.scihubTarget);
+    annotateMetrics(metrics, record, options.scihubTarget || options.citationTarget);
 
     if (options.after) {
       target.insertAdjacentElement("afterend", metrics);
@@ -1171,7 +1256,7 @@
     wrapper.innerHTML = renderMetrics(record, options);
     const next = wrapper.firstElementChild;
     if (!next) return;
-    annotateMetrics(next, record, options.scihubTarget);
+    annotateMetrics(next, record, options.scihubTarget || options.citationTarget);
     metrics.replaceWith(next);
     hydrateCitationChips(options.root || document);
     hydrateUnpaywallChips(options.root || document);
@@ -1193,8 +1278,8 @@
           return;
         }
         chipNode.classList.remove("pjm-loading", "pjm-failed");
-        chipNode.innerHTML = `<strong>Cited</strong>${escapeHtml(String(result.count))}`;
-        chipNode.title = `Citation count from ${result.source}`;
+        chipNode.innerHTML = `<strong>${escapeHtml(citationSourceLabel(result.source))}</strong>${escapeHtml(String(result.count))}`;
+        chipNode.title = citationResultTitle(result);
       }).catch(() => {
         chipNode.classList.remove("pjm-loading");
         chipNode.classList.add("pjm-failed");
@@ -1575,8 +1660,9 @@
       const abbrev = parseJournalAbbrevFromCitation(journalNode?.textContent || "");
       const record = lookupJournal({ abbrev, journal: abbrev });
       const scihubTarget = getScihubTarget(article);
+      const citationTarget = getPubmedId(article) || scihubTarget;
       const citationContainer = article.querySelector(".docsum-citation") || journalNode?.parentElement || article;
-      insertMetrics(citationContainer, record, { scihubTarget });
+      insertMetrics(citationContainer, record, { scihubTarget, citationTarget });
     }
   }
 
@@ -1593,7 +1679,9 @@
       if (!record && !doi && !title) continue;
       result.dataset.pjmProcessed = "1";
       const target = result.querySelector(".gs_ri") || result;
-      insertMetrics(target, record, { scihubTarget: doi });
+      const scholarCited = getScholarCitedCount(result);
+      const citationResult = Number.isFinite(scholarCited) ? { count: scholarCited, source: "Google Scholar" } : null;
+      insertMetrics(target, record, { scihubTarget: doi, citationResult });
       hydrateScholarResultFromOpenAlex(result, target, target.querySelector(`.${BADGE_CLASS}`), title, doi);
     }
   }
@@ -1667,13 +1755,15 @@
     for (const block of citationBlocks) {
       if (block.dataset.pjmProcessed === "1") continue;
       block.dataset.pjmProcessed = "1";
-      insertMetrics(block, record, { showSource: true, scihubTarget: getScihubTarget(block) });
+      const scihubTarget = getScihubTarget(block);
+      insertMetrics(block, record, { showSource: true, scihubTarget, citationTarget: getPubmedId(document) || scihubTarget });
     }
 
     const shortCitation = document.querySelector(".short-citation .citation-journal");
     if (shortCitation && shortCitation.dataset.pjmProcessed !== "1") {
       shortCitation.dataset.pjmProcessed = "1";
-      insertMetrics(shortCitation, record, { inline: true, after: true, scihubTarget: getScihubTarget(document) });
+      const scihubTarget = getScihubTarget(document);
+      insertMetrics(shortCitation, record, { inline: true, after: true, scihubTarget, citationTarget: getPubmedId(document) || scihubTarget });
     }
   }
 

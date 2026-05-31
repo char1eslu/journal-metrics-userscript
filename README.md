@@ -44,12 +44,14 @@ The same toolbar can export detected page items as RIS or BibTeX. DOI-backed exp
 
 ## Citation Count
 
-The `Cited` chip is loaded asynchronously from public APIs:
+The citation chip is loaded compactly with a short source label:
 
-1. OpenAlex, using DOI or PMID.
-2. Semantic Scholar, as a fallback.
+1. `GS`: the visible citation count already present on Google Scholar result pages.
+2. `NIH`: NIH iCite, used first when a PMID is available, especially on PubMed.
+3. `OA`: OpenAlex, using DOI or PMID.
+4. `S2`: Semantic Scholar, as a fallback.
 
-Google Scholar is not used because it does not provide a stable official public API for this use case and direct scraping is fragile.
+Google Scholar still has no stable official public API for this use case, so the script only reads the citation count that Google Scholar has already rendered on the current result card. On other sites, citation counts may differ because each source has different coverage and deduplication.
 
 ## Sci-Hub Domains
 
@@ -130,8 +132,8 @@ Matching priority is ISSN first on article pages, then journal title and PubMed 
 
 ## Notes
 
-- It does not send article titles, PMIDs or search terms to any backend.
-- DOI or PMID is sent to OpenAlex and, if needed, Semantic Scholar to fetch citation counts.
+- It does not use a custom tracking backend. Public APIs are called directly from the browser.
+- PMID is sent to NIH iCite when available. DOI or PMID is sent to OpenAlex and, if needed, Semantic Scholar to fetch citation counts. On Google Scholar, the article title may be sent to OpenAlex to resolve the journal and DOI.
 - The Sci-Hub button is rendered only inside the metrics row created by this script; it does not add floating buttons or modify other page links.
 - JCR and CAS data licensing can be restrictive. Keep generated data for personal/internal use unless you have the right to redistribute it.
 
@@ -142,6 +144,6 @@ This project was implemented with reference to:
 - [EasyPubMed](https://github.com/naivenaive/EasyPubMed): PubMed journal metrics UX, PubMed abbreviation mapping ideas and data-shaping references.
 - [ShowJCR](https://github.com/hitfyd/ShowJCR): JCR/CAS/warning CSV source format and local query model.
 - [Sci-Hub Button](https://greasyfork.org/zh-CN/scripts/370246-sci-hub-button): userscript pattern for opening a DOI/PMID through Sci-Hub.
-- [OpenAlex](https://openalex.org/) and [Semantic Scholar](https://www.semanticscholar.org/product/api): public citation-count sources used for the `Cited` chip.
+- [NIH iCite](https://icite.od.nih.gov/), [OpenAlex](https://openalex.org/) and [Semantic Scholar](https://www.semanticscholar.org/product/api): public citation-count sources used for the citation chip.
 
 The implementation here is independent and scoped to this userscript.
