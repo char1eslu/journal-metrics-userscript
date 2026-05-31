@@ -66,7 +66,7 @@ Temporary override: from the Tampermonkey menu, use `Journal Metrics: Set Sci-Hu
 
 ## Unpaywall
 
-When a DOI is available, the metrics row also includes an Unpaywall-based OA button. It checks the Unpaywall API and changes the chip to `PDF`, `OA <status>`, or `Closed` when a DOI result is available. The base fallback URL is:
+When a DOI is available, the metrics row also includes an Unpaywall-based OA button. It checks the Unpaywall API and changes the chip to `PDF`, `Repository`, `OA`, or `Closed`. `Closed` means Unpaywall returned a valid result but found no OA copy; `Unknown` means the lookup failed or was unavailable. The base fallback URL is:
 
 ```js
 var unpaywallBaseUrl = "https://unpaywall.org/";

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.13
+// @version      0.3.14
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -123,9 +123,9 @@
     scihubDomainsCacheTimeKey: "journal-metrics:scihub-domains-time:v1",
     scihubManualDomainsKey: "journal-metrics:scihub-manual-domains:v1",
     citationsCacheKey: "journal-metrics:citations:v2",
-    unpaywallCacheKey: "journal-metrics:unpaywall:v1",
+    unpaywallCacheKey: "journal-metrics:unpaywall:v2",
     filterStateKey: "journal-metrics:filters:v1",
-    unpaywallEmail: "journal-metrics@example.com",
+    unpaywallEmail: "char1eslu@users.noreply.github.com",
     cacheMs: 7 * 24 * 60 * 60 * 1000,
     scihubCacheMs: 7 * 24 * 60 * 60 * 1000,
     citationsCacheMs: 7 * 24 * 60 * 60 * 1000,
@@ -447,13 +447,18 @@
 
     const url = `https://api.unpaywall.org/v2/${encodeURIComponent(doi)}?email=${encodeURIComponent(CONFIG.unpaywallEmail)}`;
     const data = await loadJsonViaGm(url);
-    const location = data.best_oa_location || {};
+    const oaLocation = data.best_oa_location || {};
+    const pdfUrl = oaLocation.url_for_pdf || "";
+    const landingUrl = oaLocation.url || oaLocation.url_for_landing_page || buildUnpaywallUrl(doi);
     const result = {
       isOa: Boolean(data.is_oa),
       status: data.oa_status || "",
-      url: location.url_for_pdf || location.url || buildUnpaywallUrl(doi),
-      hasPdf: Boolean(location.url_for_pdf),
-      hostType: location.host_type || "",
+      url: pdfUrl || landingUrl,
+      pdfUrl,
+      landingUrl,
+      hasPdf: Boolean(pdfUrl),
+      hostType: oaLocation.host_type || "",
+      repositoryInstitution: oaLocation.repository_institution || "",
       time: Date.now(),
     };
     cache[key] = result;
@@ -1117,6 +1122,11 @@
         background: #f8fafc;
         color: #64748b;
       }
+      .pjm-unpaywall.pjm-unknown {
+        border-color: #cbd5e1;
+        background: #f8fafc;
+        color: #475569;
+      }
       .pjm-unpaywall.pjm-pdf {
         border-color: #dc2626;
         background: #fef2f2;
@@ -1154,7 +1164,7 @@
   function unpaywallChip(target) {
     const url = buildUnpaywallUrl(target);
     if (!url) return "";
-    return `<a class="pjm-chip pjm-unpaywall pjm-loading" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" data-pjm-unpaywall-target="${escapeHtml(target)}" title="Checking Unpaywall">${escapeHtml("Unpaywall")}</a>`;
+    return `<a class="pjm-chip pjm-unpaywall pjm-loading" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" data-pjm-unpaywall-target="${escapeHtml(target)}" title="Checking OA status via Unpaywall">${escapeHtml("OA...")}</a>`;
   }
 
   function citedChip(target, result = null) {
@@ -1295,30 +1305,43 @@
       chipNode.dataset.pjmUnpaywallLoaded = "1";
       const target = chipNode.dataset.pjmUnpaywallTarget;
       fetchUnpaywall(target).then((result) => {
-        chipNode.classList.remove("pjm-loading", "pjm-oa", "pjm-closed", "pjm-pdf");
+        chipNode.classList.remove("pjm-loading", "pjm-oa", "pjm-closed", "pjm-pdf", "pjm-unknown");
         if (!result) {
-          chipNode.textContent = "Unpaywall";
-          chipNode.title = "Open via Unpaywall";
+          chipNode.classList.add("pjm-unknown");
+          chipNode.textContent = "Unknown";
+          chipNode.title = "OA status unavailable from Unpaywall";
           return;
         }
         if (result.url) chipNode.href = result.url;
         if (result.hasPdf) {
           chipNode.classList.add("pjm-pdf");
           chipNode.textContent = "PDF";
-          chipNode.title = "Open available PDF from Unpaywall";
+          chipNode.title = result.hostType
+            ? `Open PDF from Unpaywall (${result.hostType})`
+            : "Open PDF from Unpaywall";
         } else if (result.isOa) {
           chipNode.classList.add("pjm-oa");
-          chipNode.textContent = result.status ? `OA ${result.status}` : "OA";
-          chipNode.title = result.hostType ? `Open OA copy (${result.hostType})` : "Open OA copy";
+          if (result.hostType === "repository") {
+            chipNode.textContent = "Repository";
+            chipNode.title = result.repositoryInstitution
+              ? `Open repository copy from ${result.repositoryInstitution} via Unpaywall`
+              : "Open repository copy via Unpaywall";
+          } else {
+            chipNode.textContent = "OA";
+            chipNode.title = result.status
+              ? `Open OA copy via Unpaywall (${result.status})`
+              : "Open OA copy via Unpaywall";
+          }
         } else {
           chipNode.classList.add("pjm-closed");
           chipNode.textContent = "Closed";
           chipNode.title = "No OA copy found by Unpaywall";
         }
       }).catch(() => {
-        chipNode.classList.remove("pjm-loading");
-        chipNode.textContent = "Unpaywall";
-        chipNode.title = "Open via Unpaywall";
+        chipNode.classList.remove("pjm-loading", "pjm-oa", "pjm-closed", "pjm-pdf");
+        chipNode.classList.add("pjm-unknown");
+        chipNode.textContent = "Unknown";
+        chipNode.title = "Unpaywall lookup failed";
       });
     }
   }
