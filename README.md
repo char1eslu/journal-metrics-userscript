@@ -42,6 +42,14 @@ On supported result pages, the toolbar can highlight or hide records by:
 
 The same toolbar can export detected page items as RIS or BibTeX. DOI-backed exports try citation content negotiation first and fall back to locally generated RIS or BibTeX when needed.
 
+Extra result-page tools:
+
+- `DOI`: copy visible DOI values.
+- `Cite`: copy compact citation text.
+- `Abs`: show or hide PubMed snippets/abstracts when PubMed has rendered them.
+
+The Tampermonkey menu also includes filtered RIS/BibTeX export, DOI/PMID lists, CSV and Markdown table export.
+
 ## Citation Count
 
 The citation chip always displays as `Cited <count>` to keep the metrics row compact. Hover over the chip to see the source:
@@ -52,6 +60,10 @@ The citation chip always displays as `Cited <count>` to keep the metrics row com
 4. Semantic Scholar, as a fallback.
 
 Google Scholar still has no stable official public API for this use case, so the script only reads the citation count that Google Scholar has already rendered on the current result card. On other sites, citation counts may differ because each source has different coverage and deduplication.
+
+## Integrity Signals
+
+PubMed-backed items are checked against NCBI ESummary for publication-status warnings. A red status chip appears only when PubMed reports a retraction, retraction notice, or expression of concern. DOI-backed items also get a compact PubPeer search entry.
 
 ## Sci-Hub Domains
 

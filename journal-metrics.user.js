@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.15
+// @version      0.3.16
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -102,6 +102,7 @@
 // @connect      api.semanticscholar.org
 // @connect      icite.od.nih.gov
 // @connect      api.unpaywall.org
+// @connect      eutils.ncbi.nlm.nih.gov
 // @connect      doi.org
 // @connect      localhost
 // @connect      127.0.0.1
@@ -124,12 +125,15 @@
     scihubManualDomainsKey: "journal-metrics:scihub-manual-domains:v1",
     citationsCacheKey: "journal-metrics:citations:v2",
     unpaywallCacheKey: "journal-metrics:unpaywall:v2",
+    riskCacheKey: "journal-metrics:risk:v1",
+    settingsKey: "journal-metrics:settings:v1",
     filterStateKey: "journal-metrics:filters:v1",
     unpaywallEmail: "char1eslu@users.noreply.github.com",
     cacheMs: 7 * 24 * 60 * 60 * 1000,
     scihubCacheMs: 7 * 24 * 60 * 60 * 1000,
     citationsCacheMs: 7 * 24 * 60 * 60 * 1000,
     unpaywallCacheMs: 7 * 24 * 60 * 60 * 1000,
+    riskCacheMs: 7 * 24 * 60 * 60 * 1000,
     fallbackScihubDomains: ["https://sci-hub.ren", "https://sci-hub.ee", "https://sci-hub.shop", "https://sci-hub.al", "https://sci-hub.mk", "https://sci-hub.vg", "https://sci-hub.st"],
     fallbackData: {
       meta: {
@@ -196,6 +200,7 @@
     scihubDomains: CONFIG.fallbackScihubDomains,
     processing: false,
     filters: null,
+    settings: null,
   };
 
   const STYLE_ID = "pjm-style";
@@ -235,6 +240,28 @@
 
   function isTop(record) {
     return record?.top === true || String(record?.top).toLowerCase() === "true" || record?.top === "是";
+  }
+
+  function isVisibleNode(node) {
+    if (!node) return false;
+    const style = window.getComputedStyle(node);
+    return style.display !== "none" && style.visibility !== "hidden" && !node.hidden;
+  }
+
+  function journalMetricDetails(record) {
+    if (!record) return "";
+    const details = [];
+    const updated = STATE.data?.meta?.updated;
+    if (record.journal) details.push(record.journal);
+    if (record.if || record.impactFactor || record.IF) details.push(`IF: ${record.if || record.impactFactor || record.IF}`);
+    if (record.jcr || record.jcrQuartile) details.push(`JCR: ${record.jcr || record.jcrQuartile}`);
+    if (record.cas) details.push(`CAS: ${record.cas}区`);
+    if (record.casCategory) details.push(`CAS category: ${record.casCategory}`);
+    if (record.top === true || String(record.top).toLowerCase() === "true" || record.top === "是") details.push("Top journal");
+    if (record.review === true || String(record.review).toLowerCase() === "true" || record.review === "是") details.push("Review journal");
+    if (record.warning) details.push(`Warning: ${record.warning}`);
+    if (updated) details.push(`Data: ${updated}`);
+    return details.join("\n");
   }
 
   function unique(values) {
@@ -499,6 +526,56 @@
 
   function setCitationCache(cache) {
     GM_setValue(CONFIG.citationsCacheKey, JSON.stringify(cache));
+  }
+
+  function getRiskCache() {
+    try {
+      return JSON.parse(GM_getValue(CONFIG.riskCacheKey, "{}")) || {};
+    } catch {
+      return {};
+    }
+  }
+
+  function setRiskCache(cache) {
+    GM_setValue(CONFIG.riskCacheKey, JSON.stringify(cache));
+  }
+
+  function normalizePubmedStatus(summary) {
+    const pubTypes = (summary?.pubtype || []).map((item) => String(item || ""));
+    const references = summary?.references || [];
+    const labels = [];
+    if (pubTypes.some((item) => /retracted publication/i.test(item))) labels.push("Retracted");
+    if (pubTypes.some((item) => /expression of concern/i.test(item))) labels.push("Concern");
+    if (pubTypes.some((item) => /^retraction/i.test(item))) labels.push("Retraction");
+    if (references.some((item) => /retraction in/i.test(String(item?.reftype || item?.refsource || "")))) labels.push("Retracted");
+    if (references.some((item) => /expression of concern/i.test(String(item?.reftype || item?.refsource || "")))) labels.push("Concern");
+    const uniqueLabels = unique(labels);
+    return {
+      label: uniqueLabels[0] || "",
+      details: uniqueLabels.join(", "),
+    };
+  }
+
+  async function fetchPubmedRisk(target) {
+    const pmid = normalizePmid(target);
+    if (!pmid) return null;
+    const cache = getRiskCache();
+    const cached = cache[pmid];
+    if (cached && Date.now() - cached.time < CONFIG.riskCacheMs) return cached;
+
+    const url = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=${encodeURIComponent(pmid)}&retmode=json`;
+    const data = await loadJsonViaGm(url);
+    const summary = data?.result?.[pmid] || null;
+    const status = normalizePubmedStatus(summary);
+    const result = {
+      pmid,
+      label: status.label,
+      details: status.details,
+      time: Date.now(),
+    };
+    cache[pmid] = result;
+    setRiskCache(cache);
+    return result;
   }
 
   function buildOpenAlexUrl(target) {
@@ -771,6 +848,12 @@
     };
   }
 
+  function defaultSettings() {
+    return {
+      pubmedAbstracts: false,
+    };
+  }
+
   function loadFilters() {
     try {
       return { ...defaultFilters(), ...(JSON.parse(GM_getValue(CONFIG.filterStateKey, "{}")) || {}) };
@@ -782,6 +865,19 @@
   function saveFilters(filters) {
     STATE.filters = { ...defaultFilters(), ...filters };
     GM_setValue(CONFIG.filterStateKey, JSON.stringify(STATE.filters));
+  }
+
+  function loadSettings() {
+    try {
+      return { ...defaultSettings(), ...(JSON.parse(GM_getValue(CONFIG.settingsKey, "{}")) || {}) };
+    } catch {
+      return defaultSettings();
+    }
+  }
+
+  function saveSettings(settings) {
+    STATE.settings = { ...defaultSettings(), ...settings };
+    GM_setValue(CONFIG.settingsKey, JSON.stringify(STATE.settings));
   }
 
   function registerMenuCommands() {
@@ -803,8 +899,21 @@
       window.alert("Manual Sci-Hub domains cleared. Reload the page to use remote defaults.");
     });
 
-    GM_registerMenuCommand("Journal Metrics: Export page RIS", () => exportCurrentPage("ris"));
-    GM_registerMenuCommand("Journal Metrics: Export page BibTeX", () => exportCurrentPage("bibtex"));
+    GM_registerMenuCommand("Journal Metrics: Toggle PubMed abstracts", () => {
+      saveSettings({ ...STATE.settings, pubmedAbstracts: !STATE.settings?.pubmedAbstracts });
+      syncFilterbar();
+      applyPubmedAbstracts();
+    });
+
+    GM_registerMenuCommand("Journal Metrics: Export visible RIS", () => exportCurrentPage("ris", { scope: "visible" }));
+    GM_registerMenuCommand("Journal Metrics: Export visible BibTeX", () => exportCurrentPage("bibtex", { scope: "visible" }));
+    GM_registerMenuCommand("Journal Metrics: Export filtered RIS", () => exportCurrentPage("ris", { scope: "filtered" }));
+    GM_registerMenuCommand("Journal Metrics: Export filtered BibTeX", () => exportCurrentPage("bibtex", { scope: "filtered" }));
+    GM_registerMenuCommand("Journal Metrics: Copy DOI list", () => exportCurrentPage("doi", { scope: "visible" }));
+    GM_registerMenuCommand("Journal Metrics: Copy PMID list", () => exportCurrentPage("pmid", { scope: "visible" }));
+    GM_registerMenuCommand("Journal Metrics: Copy CSV", () => exportCurrentPage("csv", { scope: "visible" }));
+    GM_registerMenuCommand("Journal Metrics: Copy Markdown table", () => exportCurrentPage("markdown", { scope: "visible" }));
+    GM_registerMenuCommand("Journal Metrics: Copy citation", () => exportCurrentPage("cite", { scope: "visible" }));
   }
 
   function buildIndexes(data) {
@@ -1073,6 +1182,10 @@
         border-left: 3px solid #2563eb;
         padding-left: 8px;
       }
+      .pjm-abstract-expanded {
+        display: block !important;
+        margin-top: 4px;
+      }
       .pjm-chip {
         display: inline-flex;
         align-items: center;
@@ -1096,6 +1209,21 @@
       .pjm-q4, .pjm-b4 { border-color: #94a3b8; background: #f1f5f9; color: #475569; }
       .pjm-top { border-color: #2563eb; background: #eff6ff; color: #1d4ed8; }
       .pjm-warning { border-color: #dc2626; background: #fef2f2; color: #991b1b; }
+      .pjm-risk {
+        border-color: #dc2626;
+        background: #fef2f2;
+        color: #991b1b;
+        text-decoration: none !important;
+      }
+      .pjm-risk.pjm-loading {
+        display: none;
+      }
+      .pjm-pubpeer {
+        border-color: #64748b;
+        background: #f8fafc;
+        color: #334155;
+        text-decoration: none !important;
+      }
       .pjm-cited { border-color: #7c3aed; background: #f5f3ff; color: #5b21b6; }
       .pjm-cited.pjm-loading { border-color: #c4b5fd; background: #faf5ff; color: #7e22ce; }
       .pjm-cited.pjm-failed { border-color: #cbd5e1; background: #f8fafc; color: #64748b; }
@@ -1155,6 +1283,20 @@
     return `<span class="pjm-chip ${className}"><strong>${escapeHtml(label)}</strong>${escapeHtml(value)}</span>`;
   }
 
+  function metricChip(label, value, className, record) {
+    if (value === undefined || value === null || value === "") return "";
+    const title = journalMetricDetails(record);
+    return `<span class="pjm-chip ${className || ""}" title="${escapeHtml(title)}"><strong>${escapeHtml(label)}</strong>${escapeHtml(value)}</span>`;
+  }
+
+  function pubpeerUrl(target) {
+    const doi = normalizeDoi(target);
+    const pmid = normalizePmid(target);
+    if (doi) return `https://pubpeer.com/search?q=${encodeURIComponent(doi)}`;
+    if (pmid) return `https://pubpeer.com/search?q=${encodeURIComponent(`PMID:${pmid}`)}`;
+    return "";
+  }
+
   function scihubChip(target) {
     const url = buildScihubUrl(target);
     if (!url) return "";
@@ -1173,6 +1315,17 @@
     }
     if (!target) return "";
     return `<span class="pjm-chip pjm-cited pjm-loading" data-pjm-citation-target="${escapeHtml(target)}" title="Checking citation count"><strong>Cited</strong>...</span>`;
+  }
+
+  function pubpeerChip(target) {
+    const url = pubpeerUrl(target);
+    if (!url) return "";
+    return `<a class="pjm-chip pjm-pubpeer" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="Search this paper on PubPeer">${escapeHtml("PubPeer")}</a>`;
+  }
+
+  function riskChip(target) {
+    if (!normalizePmid(target)) return "";
+    return `<a class="pjm-chip pjm-risk pjm-loading" href="https://pubmed.ncbi.nlm.nih.gov/${escapeHtml(normalizePmid(target))}/" target="_blank" rel="noopener noreferrer" data-pjm-risk-target="${escapeHtml(target)}" title="Checking PubMed publication status">${escapeHtml("Status...")}</a>`;
   }
 
   function escapeHtml(value) {
@@ -1199,17 +1352,17 @@
     if (record) {
       const casValue = record.cas ? `${record.cas}区` : "";
       parts.push(
-        chip("IF", record.if || record.impactFactor || record.IF),
-        chip("JCR", record.jcr || record.jcrQuartile, quartileClass(record.jcr || record.jcrQuartile)),
-        chip("CAS", casValue, casClass(casValue))
+        metricChip("IF", record.if || record.impactFactor || record.IF, "", record),
+        metricChip("JCR", record.jcr || record.jcrQuartile, quartileClass(record.jcr || record.jcrQuartile), record),
+        metricChip("CAS", casValue, casClass(casValue), record)
       );
 
-      if (record.casCategory) parts.push(chip("大类", record.casCategory));
+      if (record.casCategory) parts.push(metricChip("大类", record.casCategory, "", record));
       if (record.top === true || String(record.top).toLowerCase() === "true" || record.top === "是") {
-        parts.push(chip("", "Top", "pjm-top"));
+        parts.push(metricChip("", "Top", "pjm-top", record));
       }
       if (record.review === true || String(record.review).toLowerCase() === "true" || record.review === "是") {
-        parts.push(chip("", "Review"));
+        parts.push(metricChip("", "Review", "", record));
       }
       if (record.warning) {
         parts.push(chip("预警", record.warning, "pjm-warning"));
@@ -1218,10 +1371,12 @@
     const citationTarget = options.citationTarget || options.scihubTarget;
     if (citationTarget || options.citationResult) {
       parts.push(citedChip(citationTarget, options.citationResult));
+      parts.push(riskChip(citationTarget));
     }
     if (options.scihubTarget) {
       parts.push(unpaywallChip(options.scihubTarget));
       parts.push(scihubChip(options.scihubTarget));
+      parts.push(pubpeerChip(options.scihubTarget));
     }
 
     const source = options.showSource && STATE.data?.meta?.updated
@@ -1256,6 +1411,7 @@
     }
     hydrateCitationChips(metrics);
     hydrateUnpaywallChips(metrics);
+    hydrateRiskChips(metrics);
     applyFilters();
   }
 
@@ -1269,6 +1425,7 @@
     metrics.replaceWith(next);
     hydrateCitationChips(options.root || document);
     hydrateUnpaywallChips(options.root || document);
+    hydrateRiskChips(options.root || document);
     applyFilters();
   }
 
@@ -1342,6 +1499,26 @@
         chipNode.classList.add("pjm-unknown");
         chipNode.textContent = "Unknown";
         chipNode.title = "Unpaywall lookup failed";
+      });
+    }
+  }
+
+  function hydrateRiskChips(root = document) {
+    const chips = root.querySelectorAll?.(".pjm-risk[data-pjm-risk-target]") || [];
+    for (const chipNode of chips) {
+      if (chipNode.dataset.pjmRiskLoaded === "1") continue;
+      chipNode.dataset.pjmRiskLoaded = "1";
+      const target = chipNode.dataset.pjmRiskTarget;
+      fetchPubmedRisk(target).then((result) => {
+        chipNode.classList.remove("pjm-loading");
+        if (!result?.label) {
+          chipNode.remove();
+          return;
+        }
+        chipNode.textContent = result.label;
+        chipNode.title = result.details ? `PubMed status: ${result.details}` : "PubMed publication status";
+      }).catch(() => {
+        chipNode.remove();
       });
     }
   }
@@ -1485,6 +1662,9 @@
       <span class="pjm-filterbar-group">
         <button type="button" data-pjm-action="export-ris" title="Copy page records as RIS">RIS</button>
         <button type="button" data-pjm-action="export-bibtex" title="Copy page records as BibTeX">BibTeX</button>
+        <button type="button" data-pjm-action="copy-doi" title="Copy visible DOI list">DOI</button>
+        <button type="button" data-pjm-action="copy-cite" title="Copy compact citation text">Cite</button>
+        <button type="button" data-pjm-action="toggle-abstracts" title="Show or hide PubMed abstracts">Abs</button>
         <button type="button" data-pjm-action="reset" title="Clear all filters">Reset</button>
       </span>
     `;
@@ -1502,9 +1682,17 @@
         syncFilterbar();
         applyFilters();
       } else if (action === "export-ris") {
-        exportCurrentPage("ris");
+        exportCurrentPage("ris", { scope: "visible" });
       } else if (action === "export-bibtex") {
-        exportCurrentPage("bibtex");
+        exportCurrentPage("bibtex", { scope: "visible" });
+      } else if (action === "copy-doi") {
+        exportCurrentPage("doi", { scope: "visible" });
+      } else if (action === "copy-cite") {
+        exportCurrentPage("cite", { scope: "visible" });
+      } else if (action === "toggle-abstracts") {
+        saveSettings({ ...STATE.settings, pubmedAbstracts: !STATE.settings?.pubmedAbstracts });
+        syncFilterbar();
+        applyPubmedAbstracts();
       }
     });
     bar.addEventListener("input", (event) => {
@@ -1524,6 +1712,7 @@
     for (const key of ["q1", "cas1", "top", "hideNonMatching"]) {
       bar.querySelector(`[data-pjm-filter="${key}"]`)?.classList.toggle("pjm-active", Boolean(filters[key]));
     }
+    bar.querySelector("[data-pjm-action='toggle-abstracts']")?.classList.toggle("pjm-active", Boolean(STATE.settings?.pubmedAbstracts));
     const input = bar.querySelector("input[data-pjm-filter='minIf']");
     if (input && input.value !== String(filters.minIf || "")) input.value = filters.minIf || "";
   }
@@ -1570,9 +1759,29 @@
     }
   }
 
-  function currentPageItems() {
+  function pubmedSnippetForArticle(article) {
+    return article?.querySelector?.(".full-view-snippet, .docsum-snippet, .labs-docsum-snippet, .snippet, [class*='snippet']");
+  }
+
+  function applyPubmedAbstracts() {
+    if (location.hostname !== "pubmed.ncbi.nlm.nih.gov") return;
+    const enabled = Boolean(STATE.settings?.pubmedAbstracts);
+    for (const article of document.querySelectorAll("article.full-docsum, .docsum-content")) {
+      const snippet = pubmedSnippetForArticle(article);
+      if (!snippet) continue;
+      snippet.classList.toggle("pjm-abstract-expanded", enabled);
+    }
+  }
+
+  function currentPageItems(options = {}) {
     const metricsNodes = [...document.querySelectorAll(`.${BADGE_CLASS}`)];
-    return metricsNodes.map((metrics, index) => {
+    const scope = options.scope || "all";
+    return metricsNodes.filter((metrics) => {
+      const item = resultItemForMetrics(metrics);
+      if (scope === "visible") return !item || isVisibleNode(item);
+      if (scope === "filtered") return item?.classList.contains("pjm-filter-hit");
+      return true;
+    }).map((metrics, index) => {
       const item = resultItemForMetrics(metrics);
       let record = null;
       try {
@@ -1639,12 +1848,73 @@
     return `@article{${bibKey(item)},\n${fields.join(",\n")}\n}`;
   }
 
-  async function exportCurrentPage(format) {
-    const items = currentPageItems();
+  function csvEscape(value) {
+    return `"${String(value || "").replace(/"/g, '""')}"`;
+  }
+
+  function itemCitationText(item) {
+    const pieces = [];
+    if (item.title) pieces.push(item.title.replace(/\.$/, ""));
+    if (item.journal) pieces.push(item.journal);
+    if (item.year) pieces.push(item.year);
+    if (item.doi) pieces.push(`doi: ${item.doi}`);
+    else if (item.pmid) pieces.push(`PMID: ${item.pmid}`);
+    return pieces.join(". ") + (pieces.length ? "." : "");
+  }
+
+  function exportPlainItems(items, format) {
+    if (format === "doi") return unique(items.map((item) => item.doi)).join("\n");
+    if (format === "pmid") return unique(items.map((item) => item.pmid)).join("\n");
+    if (format === "csv") {
+      const rows = [["Title", "Journal", "Year", "DOI", "PMID", "IF", "JCR", "CAS", "URL"]];
+      for (const item of items) {
+        rows.push([
+          item.title,
+          item.journal,
+          item.year,
+          item.doi,
+          item.pmid,
+          item.record?.if || item.record?.impactFactor || item.record?.IF || "",
+          item.record?.jcr || item.record?.jcrQuartile || "",
+          item.record?.cas || "",
+          item.url,
+        ]);
+      }
+      return rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+    }
+    if (format === "markdown") {
+      const lines = ["| Title | Journal | Year | IF | JCR | CAS | DOI |", "|---|---|---:|---:|---|---|---|"];
+      for (const item of items) {
+        lines.push(`| ${item.title || ""} | ${item.journal || ""} | ${item.year || ""} | ${item.record?.if || ""} | ${item.record?.jcr || ""} | ${item.record?.cas || ""} | ${item.doi || ""} |`);
+      }
+      return lines.join("\n");
+    }
+    if (format === "cite") return items.map(itemCitationText).filter(Boolean).join("\n");
+    return "";
+  }
+
+  async function exportCurrentPage(format, options = {}) {
+    const items = currentPageItems(options);
     if (!items.length) {
       window.alert("No Journal Metrics items found on this page.");
       return;
     }
+
+    if (["doi", "pmid", "csv", "markdown", "cite"].includes(format)) {
+      const text = exportPlainItems(items, format);
+      if (!text) {
+        window.alert(`No ${format.toUpperCase()} data found on this page.`);
+        return;
+      }
+      if (typeof GM_setClipboard === "function") {
+        GM_setClipboard(text, "text");
+        window.alert(`Copied ${items.length} ${format.toUpperCase()} records.`);
+      } else {
+        window.prompt(`Copy ${format.toUpperCase()} records`, text);
+      }
+      return;
+    }
+
     const chunks = [];
     for (const item of items) {
       if (item.doi) {
@@ -1686,6 +1956,7 @@
       const citationContainer = article.querySelector(".docsum-citation") || journalNode?.parentElement || article;
       insertMetrics(citationContainer, record, { scihubTarget, citationTarget });
     }
+    applyPubmedAbstracts();
   }
 
   function processGoogleScholarResults() {
@@ -1892,6 +2163,7 @@
       processGenericResultLists();
       processArticlePage();
       processGenericArticlePage();
+      applyPubmedAbstracts();
       applyFilters();
     } finally {
       STATE.processing = false;
@@ -1919,6 +2191,7 @@
     STATE.data = data;
     STATE.scihubDomains = scihubDomains;
     STATE.filters = loadFilters();
+    STATE.settings = loadSettings();
     STATE.indexes = buildIndexes(STATE.data);
     processPage();
     observePageChanges();
