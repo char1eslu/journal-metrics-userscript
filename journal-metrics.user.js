@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.26
+// @version      0.3.27
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @license      MIT
@@ -1919,6 +1919,14 @@
         font-weight: 700;
         line-height: 20px !important;
       }
+      .pjm-neutral {
+        border-color: #94a3b8 !important;
+        background: #f1f5f9 !important;
+        color: #334155 !important;
+      }
+      .pjm-neutral strong {
+        color: #334155 !important;
+      }
       .pjm-q1, .pjm-b1 { border-color: #ef4444 !important; background: #fff1f2 !important; color: #991b1b !important; }
       .pjm-q2, .pjm-b2 { border-color: #f59e0b !important; background: #fffbeb !important; color: #92400e !important; }
       .pjm-q3, .pjm-b3 { border-color: #22c55e !important; background: #f0fdf4 !important; color: #166534 !important; }
@@ -2011,7 +2019,8 @@
   function metricChip(label, value, className, record, match) {
     if (value === undefined || value === null || value === "") return "";
     const title = journalMetricDetails(record, match);
-    return `<button type="button" class="pjm-chip pjm-detail-chip ${className || ""}" title="${escapeHtml(title)}"><strong>${escapeHtml(label)}</strong>${escapeHtml(value)}</button>`;
+    const toneClass = className || "pjm-neutral";
+    return `<button type="button" class="pjm-chip pjm-detail-chip ${toneClass}" title="${escapeHtml(title)}"><strong>${escapeHtml(label)}</strong>${escapeHtml(value)}</button>`;
   }
 
   function pubpeerUrl(target) {
