@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.10
+// @version      0.3.11
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -1450,15 +1450,12 @@
       document.querySelector("#gs_res_ccl .gs_r .gs_ri") ||
       document.querySelector("#gs_res_ccl_mid .gs_r") ||
       document.querySelector("#gs_res_ccl .gs_r");
-    const container = document.querySelector("#gs_res_ccl_mid") || document.querySelector("#gs_res_ccl");
     const parent = bar.parentElement;
-    if (!anchor || !container || !parent) return;
+    if (!anchor || !parent) return;
 
     const parentRect = parent.getBoundingClientRect();
     const anchorRect = anchor.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
-    const rightEdge = Math.max(anchorRect.right, containerRect.right);
-    const targetWidth = Math.round(rightEdge - anchorRect.left);
+    const targetWidth = Math.round(anchorRect.width);
     if (!parentRect.width || !targetWidth || targetWidth < 320) {
       bar.style.marginLeft = "";
       bar.style.width = "";
@@ -1466,7 +1463,7 @@
     }
 
     const left = Math.max(0, Math.round(anchorRect.left - parentRect.left));
-    const right = Math.max(0, Math.round(parentRect.right - rightEdge));
+    const right = Math.max(0, Math.round(parentRect.right - anchorRect.right));
     bar.style.marginLeft = `${left}px`;
     bar.style.width = `calc(100% - ${left + right}px)`;
   }
