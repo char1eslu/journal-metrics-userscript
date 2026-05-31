@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.14
+// @version      0.3.15
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -1334,7 +1334,7 @@
           }
         } else {
           chipNode.classList.add("pjm-closed");
-          chipNode.textContent = "Closed";
+          chipNode.textContent = "No OA";
           chipNode.title = "No OA copy found by Unpaywall";
         }
       }).catch(() => {
