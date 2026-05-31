@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.23
+// @version      0.3.24
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -1817,22 +1817,31 @@
       .pjm-chip {
         display: inline-flex !important;
         align-items: center;
-        min-height: 18px;
-        border: 1px solid #cbd5e1;
-        border-radius: 4px;
-        padding: 1px 6px;
+        justify-content: center;
+        box-sizing: border-box !important;
+        height: 22px !important;
+        min-height: 22px !important;
+        max-height: 22px !important;
+        border-width: 1px !important;
+        border-style: solid !important;
+        border-color: #cbd5e1;
+        border-radius: 4px !important;
+        padding: 0 7px !important;
+        margin: 0 !important;
         background: #f8fafc;
         color: #334155;
-        font-weight: 600;
+        font-family: Arial, sans-serif !important;
+        font-size: 12px !important;
+        font-weight: 700 !important;
+        line-height: 20px !important;
         white-space: nowrap;
         text-decoration: none !important;
         text-shadow: none !important;
+        vertical-align: baseline !important;
       }
       button.pjm-chip {
-        appearance: none;
+        appearance: none !important;
         cursor: pointer;
-        font: inherit;
-        line-height: 1.4;
       }
       .pjm-hidden-by-setting {
         display: none !important;
@@ -1841,14 +1850,15 @@
         margin-right: 3px;
         color: #475569;
         font-weight: 700;
+        line-height: 20px !important;
       }
-      .pjm-q1, .pjm-b1 { border-color: #ef4444; background: #fff1f2; color: #991b1b; }
-      .pjm-q2, .pjm-b2 { border-color: #f59e0b; background: #fffbeb; color: #92400e; }
-      .pjm-q3, .pjm-b3 { border-color: #22c55e; background: #f0fdf4; color: #166534; }
-      .pjm-q4, .pjm-b4 { border-color: #94a3b8; background: #f1f5f9; color: #475569; }
-      .pjm-top { border-color: #2563eb; background: #eff6ff; color: #1d4ed8; }
-      .pjm-warning { border-color: #dc2626; background: #fef2f2; color: #991b1b; }
-      .pjm-check { border-color: #f59e0b; background: #fffbeb; color: #92400e; }
+      .pjm-q1, .pjm-b1 { border-color: #ef4444 !important; background: #fff1f2 !important; color: #991b1b !important; }
+      .pjm-q2, .pjm-b2 { border-color: #f59e0b !important; background: #fffbeb !important; color: #92400e !important; }
+      .pjm-q3, .pjm-b3 { border-color: #22c55e !important; background: #f0fdf4 !important; color: #166534 !important; }
+      .pjm-q4, .pjm-b4 { border-color: #94a3b8 !important; background: #f1f5f9 !important; color: #475569 !important; }
+      .pjm-top { border-color: #2563eb !important; background: #eff6ff !important; color: #1d4ed8 !important; }
+      .pjm-warning { border-color: #dc2626 !important; background: #fef2f2 !important; color: #991b1b !important; }
+      .pjm-check { border-color: #f59e0b !important; background: #fffbeb !important; color: #92400e !important; }
       .pjm-risk {
         border-color: #dc2626 !important;
         background: #fef2f2 !important;
@@ -1865,16 +1875,16 @@
         text-decoration: none !important;
       }
       .pjm-update {
-        border-color: #0ea5e9;
-        background: #f0f9ff;
-        color: #075985;
+        border-color: #0ea5e9 !important;
+        background: #f0f9ff !important;
+        color: #075985 !important;
       }
       .pjm-update.pjm-loading {
         display: none;
       }
-      .pjm-cited { border-color: #7c3aed; background: #f5f3ff; color: #5b21b6; }
-      .pjm-cited.pjm-loading { border-color: #c4b5fd; background: #faf5ff; color: #7e22ce; }
-      .pjm-cited.pjm-failed { border-color: #cbd5e1; background: #f8fafc; color: #64748b; }
+      .pjm-cited { border-color: #7c3aed !important; background: #f5f3ff !important; color: #5b21b6 !important; }
+      .pjm-cited.pjm-loading { border-color: #c4b5fd !important; background: #faf5ff !important; color: #7e22ce !important; }
+      .pjm-cited.pjm-failed { border-color: #cbd5e1 !important; background: #f8fafc !important; color: #64748b !important; }
       .pjm-muted { color: #64748b; font-weight: 500; }
       .pjm-scihub {
         border-color: #0f766e !important;
