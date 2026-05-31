@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.20
+// @version      0.3.21
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -1042,12 +1042,6 @@
         modal.remove();
         return;
       }
-      const input = event.target.closest("input[data-pjm-setting]");
-      if (input) {
-        saveSettings({ ...STATE.settings, [input.dataset.pjmSetting]: input.checked });
-        reloadSoon();
-        return;
-      }
       const cacheButton = event.target.closest("button[data-pjm-cache]");
       if (!cacheButton) return;
       const cache = cacheButton.dataset.pjmCache;
@@ -1058,7 +1052,62 @@
       window.alert("Cache cleared. Reloading page.");
       reloadSoon();
     });
+    modal.addEventListener("change", (event) => {
+      const input = event.target.closest("input[data-pjm-setting]");
+      if (!input) return;
+      saveSettings({ ...STATE.settings, [input.dataset.pjmSetting]: input.checked });
+      syncFilterbar();
+      applySettingsVisibility();
+    });
     document.body.append(modal);
+  }
+
+  function moreMenuHtml() {
+    return `
+      <button type="button" data-pjm-action="export-ris" title="Copy visible records as RIS">RIS</button>
+      <button type="button" data-pjm-action="export-bibtex" title="Copy visible records as BibTeX">BibTeX</button>
+      <button type="button" data-pjm-action="export-selected-ris" title="Copy selected records as RIS">Selected RIS</button>
+      <button type="button" data-pjm-action="export-selected-bibtex" title="Copy selected records as BibTeX">Selected BibTeX</button>
+      <button type="button" data-pjm-action="copy-doi" title="Copy visible DOI list">DOI</button>
+      <button type="button" data-pjm-action="copy-cite" title="Copy compact citation text">Cite</button>
+      <button type="button" data-pjm-action="toggle-abstracts" title="Show or hide PubMed abstracts">Abs</button>
+      <button type="button" data-pjm-action="settings" title="Open settings">Settings</button>
+      <button type="button" data-pjm-action="reset" title="Clear all filters">Reset</button>
+    `;
+  }
+
+  function closeMorePopover() {
+    document.getElementById("pjm-more-popover")?.remove();
+  }
+
+  function openMorePopover(button) {
+    const existing = document.getElementById("pjm-more-popover");
+    if (existing && existing.dataset.pjmOwner === button.dataset.pjmOwner) {
+      existing.remove();
+      return;
+    }
+    closeMorePopover();
+    const popover = document.createElement("div");
+    popover.id = "pjm-more-popover";
+    popover.dataset.pjmOwner = button.dataset.pjmOwner;
+    popover.innerHTML = moreMenuHtml();
+    popover.addEventListener("click", (event) => {
+      const actionButton = event.target.closest("button[data-pjm-action]");
+      if (!actionButton) return;
+      handleToolbarAction(actionButton.dataset.pjmAction);
+      closeMorePopover();
+    });
+    document.body.append(popover);
+    const rect = button.getBoundingClientRect();
+    const width = popover.offsetWidth || 132;
+    const height = popover.offsetHeight || 220;
+    const left = Math.max(8, Math.min(window.innerWidth - width - 8, rect.right - width));
+    let top = rect.bottom + 4;
+    if (top + height > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - height - 4);
+    }
+    popover.style.left = `${left}px`;
+    popover.style.top = `${top}px`;
   }
 
   function registerMenuCommands() {
@@ -1379,11 +1428,10 @@
         position: relative;
         display: inline-flex;
       }
-      .pjm-more-menu {
-        position: absolute;
-        top: calc(100% + 4px);
-        right: 0;
-        display: none;
+      #pjm-more-popover {
+        position: fixed;
+        display: grid;
+        gap: 4px;
         z-index: 2147483645;
         min-width: 132px;
         padding: 5px;
@@ -1391,14 +1439,26 @@
         border-radius: 4px;
         background: #fff;
         box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+        color: #334155;
+        font-family: Arial, sans-serif;
+        font-size: 12px;
+        text-transform: none !important;
+        letter-spacing: normal !important;
       }
-      .pjm-more-wrap.pjm-open .pjm-more-menu {
-        display: grid;
-        gap: 4px;
-      }
-      .pjm-more-menu button {
+      #pjm-more-popover button {
         width: 100%;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        background: #fff;
+        color: #334155;
+        font: inherit;
+        font-weight: 700;
+        line-height: 18px;
+        padding: 3px 7px;
         text-align: left;
+        text-transform: none !important;
+        letter-spacing: normal !important;
+        cursor: pointer;
       }
       .pjm-filterbar label {
         display: inline-flex;
@@ -1485,6 +1545,9 @@
         color: #334155;
         font-weight: 600;
         white-space: nowrap;
+      }
+      .pjm-hidden-by-setting {
+        display: none !important;
       }
       .pjm-chip strong {
         margin-right: 3px;
@@ -1609,12 +1672,23 @@
       }
       .pjm-settings-head button,
       .pjm-settings-actions button {
-        border: 1px solid #cbd5e1;
-        border-radius: 4px;
-        background: #fff;
-        color: #334155;
-        font-weight: 700;
+        appearance: none !important;
+        min-width: 0 !important;
+        min-height: 0 !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 4px !important;
+        background: #fff !important;
+        color: #334155 !important;
+        font: inherit !important;
+        font-weight: 700 !important;
         cursor: pointer;
+      }
+      .pjm-settings-head button {
+        width: 28px !important;
+        height: 28px !important;
+        padding: 0 !important;
+        line-height: 26px !important;
+        text-align: center !important;
       }
       .pjm-settings-body {
         display: grid;
@@ -1625,6 +1699,29 @@
         display: flex;
         align-items: center;
         gap: 8px;
+        min-height: 22px;
+        margin: 0 !important;
+        padding: 0 !important;
+        line-height: 22px;
+        cursor: pointer;
+      }
+      #pjm-settings-modal .pjm-settings-row input[type="checkbox"] {
+        appearance: auto !important;
+        -webkit-appearance: checkbox !important;
+        display: inline-block !important;
+        flex: 0 0 auto;
+        width: 16px !important;
+        height: 16px !important;
+        min-width: 16px !important;
+        min-height: 16px !important;
+        margin: 0 !important;
+        opacity: 1 !important;
+        position: static !important;
+        visibility: visible !important;
+      }
+      .pjm-settings-row span {
+        display: inline-block;
+        line-height: 22px;
       }
       .pjm-settings-actions {
         display: grid;
@@ -1634,8 +1731,10 @@
         border-top: 1px solid #e2e8f0;
       }
       .pjm-settings-actions button {
-        padding: 5px 6px;
-        font-size: 12px;
+        height: 28px !important;
+        padding: 5px 6px !important;
+        font-size: 12px !important;
+        line-height: 16px !important;
       }
       .pjm-floating-bar {
         position: fixed;
@@ -1839,6 +1938,18 @@
     hydrateRiskChips(options.root || document);
     hydrateCrossrefStatusChips(options.root || document);
     applyFilters();
+  }
+
+  function applySettingsVisibility(root = document) {
+    const settings = { ...defaultSettings(), ...(STATE.settings || {}) };
+    root.querySelectorAll?.(".pjm-cited").forEach((node) => node.classList.toggle("pjm-hidden-by-setting", !settings.showCited));
+    root.querySelectorAll?.(".pjm-unpaywall").forEach((node) => node.classList.toggle("pjm-hidden-by-setting", !settings.showOa));
+    root.querySelectorAll?.(".pjm-scihub").forEach((node) => node.classList.toggle("pjm-hidden-by-setting", !settings.showScihub));
+    root.querySelectorAll?.(".pjm-pubpeer").forEach((node) => node.classList.toggle("pjm-hidden-by-setting", !settings.showPubpeer));
+    root.querySelectorAll?.(".pjm-risk").forEach((node) => node.classList.toggle("pjm-hidden-by-setting", !settings.showRisk));
+    root.querySelectorAll?.(".pjm-update").forEach((node) => node.classList.toggle("pjm-hidden-by-setting", !settings.showCrossrefStatus));
+    document.getElementById("pjm-floating-bar")?.classList.toggle("pjm-hidden-by-setting", !settings.showArticleFloatingBar);
+    applyPubmedAbstracts();
   }
 
   function hydrateCitationChips(root = document) {
@@ -2071,6 +2182,33 @@
     bar.style.width = `calc(100% - ${left + right}px)`;
   }
 
+  function handleToolbarAction(action) {
+    if (!action) return;
+    if (action === "reset") {
+      saveFilters(defaultFilters());
+      syncFilterbar();
+      applyFilters();
+    } else if (action === "export-ris") {
+      exportCurrentPage("ris", { scope: "visible" });
+    } else if (action === "export-bibtex") {
+      exportCurrentPage("bibtex", { scope: "visible" });
+    } else if (action === "export-selected-ris") {
+      exportCurrentPage("ris", { scope: "selected" });
+    } else if (action === "export-selected-bibtex") {
+      exportCurrentPage("bibtex", { scope: "selected" });
+    } else if (action === "copy-doi") {
+      exportCurrentPage("doi", { scope: "visible" });
+    } else if (action === "copy-cite") {
+      exportCurrentPage("cite", { scope: "visible" });
+    } else if (action === "toggle-abstracts") {
+      saveSettings({ ...STATE.settings, pubmedAbstracts: !STATE.settings?.pubmedAbstracts });
+      syncFilterbar();
+      applyPubmedAbstracts();
+    } else if (action === "settings") {
+      openSettingsPanel();
+    }
+  }
+
   function ensureFilterbar() {
     if (!isResultListPage()) return;
     const existing = document.getElementById("pjm-filterbar");
@@ -2096,18 +2234,7 @@
       <span class="pjm-filterbar-spacer" aria-hidden="true"></span>
       <span class="pjm-filterbar-group">
         <span class="pjm-more-wrap">
-          <button type="button" data-pjm-action="more" title="More tools">More</button>
-          <span class="pjm-more-menu">
-            <button type="button" data-pjm-action="export-ris" title="Copy visible records as RIS">RIS</button>
-            <button type="button" data-pjm-action="export-bibtex" title="Copy visible records as BibTeX">BibTeX</button>
-            <button type="button" data-pjm-action="export-selected-ris" title="Copy selected records as RIS">Selected RIS</button>
-            <button type="button" data-pjm-action="export-selected-bibtex" title="Copy selected records as BibTeX">Selected BibTeX</button>
-            <button type="button" data-pjm-action="copy-doi" title="Copy visible DOI list">DOI</button>
-            <button type="button" data-pjm-action="copy-cite" title="Copy compact citation text">Cite</button>
-            <button type="button" data-pjm-action="toggle-abstracts" title="Show or hide PubMed abstracts">Abs</button>
-            <button type="button" data-pjm-action="settings" title="Open settings">Settings</button>
-            <button type="button" data-pjm-action="reset" title="Clear all filters">Reset</button>
-          </span>
+          <button type="button" data-pjm-action="more" data-pjm-owner="filterbar" title="More tools">More</button>
         </span>
       </span>
     `;
@@ -2121,32 +2248,12 @@
         syncFilterbar();
         applyFilters();
       } else if (action === "reset") {
-        saveFilters(defaultFilters());
-        syncFilterbar();
-        applyFilters();
+        handleToolbarAction(action);
       } else if (action === "more") {
-        button.closest(".pjm-more-wrap")?.classList.toggle("pjm-open");
-      } else if (action === "export-ris") {
-        exportCurrentPage("ris", { scope: "visible" });
-      } else if (action === "export-bibtex") {
-        exportCurrentPage("bibtex", { scope: "visible" });
-      } else if (action === "export-selected-ris") {
-        exportCurrentPage("ris", { scope: "selected" });
-      } else if (action === "export-selected-bibtex") {
-        exportCurrentPage("bibtex", { scope: "selected" });
-      } else if (action === "copy-doi") {
-        exportCurrentPage("doi", { scope: "visible" });
-      } else if (action === "copy-cite") {
-        exportCurrentPage("cite", { scope: "visible" });
-      } else if (action === "toggle-abstracts") {
-        saveSettings({ ...STATE.settings, pubmedAbstracts: !STATE.settings?.pubmedAbstracts });
-        syncFilterbar();
-        applyPubmedAbstracts();
-      } else if (action === "settings") {
-        openSettingsPanel();
-      }
-      if (action && action !== "more") {
-        button.closest(".pjm-more-wrap")?.classList.remove("pjm-open");
+        openMorePopover(button);
+      } else if (action) {
+        handleToolbarAction(action);
+        closeMorePopover();
       }
     });
     bar.addEventListener("input", (event) => {
@@ -2700,6 +2807,7 @@
       processGenericArticlePage();
       ensureFloatingArticleBar();
       applyPubmedAbstracts();
+      applySettingsVisibility();
       applyFilters();
     } finally {
       STATE.processing = false;
@@ -2713,6 +2821,7 @@
     });
     observer.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("resize", () => {
+      closeMorePopover();
       window.clearTimeout(observePageChanges.resizeTimer);
       observePageChanges.resizeTimer = window.setTimeout(() => {
         const bar = document.getElementById("pjm-filterbar");
@@ -2720,8 +2829,8 @@
       }, 120);
     });
     document.addEventListener("click", (event) => {
-      if (event.target.closest(".pjm-more-wrap")) return;
-      document.querySelector(".pjm-more-wrap.pjm-open")?.classList.remove("pjm-open");
+      if (event.target.closest(".pjm-more-wrap, #pjm-more-popover")) return;
+      closeMorePopover();
     });
   }
 
