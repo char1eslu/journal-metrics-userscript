@@ -47,11 +47,13 @@ Extra result-page tools are grouped under `More` to keep the toolbar compact:
 - `DOI`: copy visible DOI values.
 - `Cite`: copy compact citation text.
 - `Abs`: show or hide PubMed snippets/abstracts when PubMed has rendered them.
-- `Selected RIS/BibTeX`: export selected records. PubMed uses its native result checkboxes; Google Scholar gets a small checkbox per result.
+- `Selected RIS/BibTeX/CSV/Markdown`: export selected records. PubMed uses its native result checkboxes; Google Scholar gets a small checkbox per result.
 
 The Tampermonkey menu also includes filtered RIS/BibTeX export, DOI/PMID lists, CSV and Markdown table export.
 
 `Journal Metrics: Settings` opens a compact settings panel for toggling citation counts, OA, Sci-Hub, PubPeer, Crossref status chips, PubMed risk chips, PubMed abstracts and the article-page floating bar. The same panel can clear journal data, citation, OA and Crossref caches.
+
+Floating UI surfaces such as `More`, `Settings`, journal-detail popups and the article-page shortcut bar are rendered inside an isolated Shadow DOM container to avoid publisher CSS overriding script controls.
 
 ## Citation Count
 
@@ -70,7 +72,7 @@ PubMed-backed items are checked against NCBI ESummary for publication-status war
 
 Crossref update metadata is checked for DOI-backed items and can surface `Correction`, `Retraction`, or `Update` chips when Crossref reports a relation. When a result has a title but no DOI, the script can resolve the DOI through Crossref only when the returned title is a high-confidence match.
 
-Journal metric hover text includes the matching route, such as ISSN, journal title, abbreviation, or low-confidence page-text matching.
+Journal metric hover text includes the matching route, such as ISSN, journal title, abbreviation, or low-confidence page-text matching. Click an IF/JCR/CAS chip to open a copyable journal-detail popup. Low-confidence page-text matches also show a `Check` chip.
 
 Article pages can show a small floating bar with OA, Sci-Hub, Cite and PubPeer shortcuts when the corresponding settings are enabled.
 

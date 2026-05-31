@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.22
+// @version      0.3.23
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -208,6 +208,7 @@
 
   const STYLE_ID = "pjm-style";
   const BADGE_CLASS = "pjm-metrics";
+  const UI_HOST_ID = "pjm-ui-host";
 
   function normalizeKey(value) {
     return String(value || "")
@@ -257,9 +258,7 @@
     const updated = STATE.data?.meta?.updated;
     if (record.journal) details.push(record.journal);
     if (match?.method) {
-      const confidence = match.confidence ? `, ${match.confidence}` : "";
-      const source = match.source ? ` (${match.source})` : "";
-      details.push(`Matched by ${match.method}${confidence}${source}`);
+      details.push(matchDescription(match));
     }
     if (record.if || record.impactFactor || record.IF) details.push(`IF: ${record.if || record.impactFactor || record.IF}`);
     if (record.jcr || record.jcrQuartile) details.push(`JCR: ${record.jcr || record.jcrQuartile}`);
@@ -270,6 +269,13 @@
     if (record.warning) details.push(`Warning: ${record.warning}`);
     if (updated) details.push(`Data: ${updated}`);
     return details.join("\n");
+  }
+
+  function matchDescription(match = null) {
+    if (!match?.method) return "";
+    const confidence = match.confidence ? `, ${match.confidence}` : "";
+    const source = match.source ? ` (${match.source})` : "";
+    return `Matched by ${match.method}${confidence}${source}`;
   }
 
   function unique(values) {
@@ -997,6 +1003,219 @@
     window.setTimeout(() => location.reload(), 250);
   }
 
+  function uiStyles() {
+    return `
+      :host {
+        all: initial;
+        color-scheme: light;
+        font-family: Arial, sans-serif;
+      }
+      *, *::before, *::after {
+        box-sizing: border-box;
+      }
+      button, input, a, label {
+        font-family: Arial, sans-serif;
+      }
+      #pjm-more-popover {
+        position: fixed;
+        display: grid;
+        gap: 4px;
+        z-index: 2147483645;
+        min-width: 148px;
+        padding: 5px;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        background: #fff;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+        color: #334155;
+        font-size: 12px;
+      }
+      #pjm-more-popover button,
+      .pjm-floating-bar a,
+      .pjm-floating-bar button,
+      .pjm-settings-head button,
+      .pjm-settings-actions button,
+      .pjm-detail-head button {
+        appearance: none;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        background: #fff;
+        color: #334155;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      #pjm-more-popover button {
+        width: 100%;
+        line-height: 18px;
+        padding: 3px 7px;
+        text-align: left;
+      }
+      #pjm-settings-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483646;
+        color: #334155;
+        font-size: 13px;
+      }
+      .pjm-settings-backdrop,
+      .pjm-detail-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.18);
+      }
+      .pjm-settings-dialog {
+        position: fixed;
+        top: 72px;
+        right: 28px;
+        width: min(320px, calc(100vw - 40px));
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #fff;
+        box-shadow: 0 18px 46px rgba(15, 23, 42, 0.2);
+      }
+      .pjm-settings-head,
+      .pjm-detail-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 9px 11px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+      .pjm-settings-head button,
+      .pjm-detail-head button {
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        line-height: 26px;
+        text-align: center;
+      }
+      .pjm-settings-body {
+        display: grid;
+        gap: 7px;
+        padding: 10px 11px;
+      }
+      .pjm-settings-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 22px;
+        margin: 0;
+        padding: 0;
+        line-height: 22px;
+        cursor: pointer;
+      }
+      .pjm-settings-row input[type="checkbox"] {
+        appearance: auto;
+        -webkit-appearance: checkbox;
+        display: inline-block;
+        flex: 0 0 auto;
+        width: 16px;
+        height: 16px;
+        min-width: 16px;
+        min-height: 16px;
+        margin: 0;
+        opacity: 1;
+        position: static;
+        visibility: visible;
+      }
+      .pjm-settings-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        padding: 10px 11px 11px;
+        border-top: 1px solid #e2e8f0;
+      }
+      .pjm-settings-actions button {
+        height: 28px;
+        padding: 5px 6px;
+        font-size: 12px;
+        line-height: 16px;
+      }
+      .pjm-floating-bar {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        z-index: 2147483644;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 5px;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 10px 26px rgba(15, 23, 42, 0.16);
+        font-size: 12px;
+      }
+      .pjm-floating-bar a,
+      .pjm-floating-bar button {
+        padding: 3px 7px;
+        line-height: 18px;
+      }
+      .pjm-detail-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483646;
+        color: #334155;
+        font-size: 13px;
+      }
+      .pjm-detail-dialog {
+        position: fixed;
+        width: min(360px, calc(100vw - 40px));
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        background: #fff;
+        box-shadow: 0 18px 46px rgba(15, 23, 42, 0.2);
+      }
+      .pjm-detail-body {
+        display: grid;
+        gap: 6px;
+        padding: 10px 11px 12px;
+      }
+      .pjm-detail-row {
+        display: grid;
+        grid-template-columns: 82px minmax(0, 1fr);
+        gap: 8px;
+        align-items: start;
+      }
+      .pjm-detail-key {
+        color: #64748b;
+        font-weight: 700;
+      }
+      .pjm-detail-value {
+        color: #334155;
+        overflow-wrap: anywhere;
+      }
+      .pjm-hidden-by-setting {
+        display: none !important;
+      }
+    `;
+  }
+
+  function uiRoot() {
+    let host = document.getElementById(UI_HOST_ID);
+    if (!host) {
+      host = document.createElement("div");
+      host.id = UI_HOST_ID;
+      const root = host.attachShadow({ mode: "open" });
+      const style = document.createElement("style");
+      style.textContent = uiStyles();
+      root.append(style);
+      document.documentElement.append(host);
+    }
+    return host.shadowRoot;
+  }
+
+  function removeUiNode(id) {
+    uiRoot().getElementById(id)?.remove();
+  }
+
+  function eventPathHas(event, predicate) {
+    return event.composedPath?.().some((node) => node instanceof Element && predicate(node));
+  }
+
   function settingsRows() {
     const settings = { ...defaultSettings(), ...(STATE.settings || {}) };
     const labels = [
@@ -1018,7 +1237,7 @@
   }
 
   function openSettingsPanel() {
-    document.getElementById("pjm-settings-modal")?.remove();
+    removeUiNode("pjm-settings-modal");
     const modal = document.createElement("div");
     modal.id = "pjm-settings-modal";
     modal.innerHTML = `
@@ -1059,7 +1278,7 @@
       syncFilterbar();
       applySettingsVisibility();
     });
-    document.body.append(modal);
+    uiRoot().append(modal);
   }
 
   function moreMenuHtml() {
@@ -1068,6 +1287,8 @@
       <button type="button" data-pjm-action="export-bibtex" title="Copy visible records as BibTeX">BibTeX</button>
       <button type="button" data-pjm-action="export-selected-ris" title="Copy selected records as RIS">Selected RIS</button>
       <button type="button" data-pjm-action="export-selected-bibtex" title="Copy selected records as BibTeX">Selected BibTeX</button>
+      <button type="button" data-pjm-action="export-selected-csv" title="Copy selected records as CSV">Selected CSV</button>
+      <button type="button" data-pjm-action="export-selected-markdown" title="Copy selected records as Markdown">Selected Markdown</button>
       <button type="button" data-pjm-action="copy-doi" title="Copy visible DOI list">DOI</button>
       <button type="button" data-pjm-action="copy-cite" title="Copy compact citation text">Cite</button>
       <button type="button" data-pjm-action="toggle-abstracts" title="Show or hide PubMed abstracts">Abs</button>
@@ -1077,11 +1298,84 @@
   }
 
   function closeMorePopover() {
-    document.getElementById("pjm-more-popover")?.remove();
+    removeUiNode("pjm-more-popover");
+  }
+
+  function closeDetailPanel() {
+    removeUiNode("pjm-detail-modal");
+  }
+
+  function detailRows(record, match) {
+    const updated = STATE.data?.meta?.updated || "";
+    const rows = [
+      ["Journal", record?.journal || ""],
+      ["ISSN", asArray(record?.issn).join(", ")],
+      ["IF", record?.if || record?.impactFactor || record?.IF || ""],
+      ["JCR", record?.jcr || record?.jcrQuartile || ""],
+      ["CAS", record?.cas ? `${record.cas}区` : ""],
+      ["Category", record?.casCategory || ""],
+      ["Top", isTop(record) ? "Yes" : ""],
+      ["Review", record?.review === true || String(record?.review).toLowerCase() === "true" || record?.review === "是" ? "Yes" : ""],
+      ["Warning", record?.warning || ""],
+      ["Data", updated],
+      ["Match", matchDescription(match)],
+    ];
+    return rows
+      .filter(([, value]) => value !== undefined && value !== null && value !== "")
+      .map(([key, value]) => `
+        <div class="pjm-detail-row">
+          <span class="pjm-detail-key">${escapeHtml(key)}</span>
+          <span class="pjm-detail-value">${escapeHtml(value)}</span>
+        </div>
+      `).join("");
+  }
+
+  function openJournalDetail(metrics, anchor) {
+    if (!metrics) return;
+    let record = null;
+    let match = null;
+    try {
+      record = JSON.parse(metrics.dataset.pjmRecord || "null");
+      match = JSON.parse(metrics.dataset.pjmMatch || "null");
+    } catch {
+      record = null;
+      match = null;
+    }
+    if (!record) return;
+    closeDetailPanel();
+    const modal = document.createElement("div");
+    modal.id = "pjm-detail-modal";
+    modal.className = "pjm-detail-modal";
+    modal.innerHTML = `
+      <div class="pjm-detail-backdrop" data-pjm-close-detail="1"></div>
+      <div class="pjm-detail-dialog" role="dialog" aria-label="Journal details">
+        <div class="pjm-detail-head">
+          <strong>Journal Details</strong>
+          <button type="button" data-pjm-close-detail="1" title="Close">×</button>
+        </div>
+        <div class="pjm-detail-body">${detailRows(record, match)}</div>
+      </div>
+    `;
+    modal.addEventListener("click", (event) => {
+      if (event.target.closest("[data-pjm-close-detail]")) closeDetailPanel();
+    });
+    uiRoot().append(modal);
+    const dialog = modal.querySelector(".pjm-detail-dialog");
+    const rect = anchor?.getBoundingClientRect?.() || { left: 24, right: 360, bottom: 90, top: 60 };
+    const width = dialog.offsetWidth || 360;
+    const height = dialog.offsetHeight || 240;
+    const left = Math.max(12, Math.min(window.innerWidth - width - 12, rect.left));
+    let top = rect.bottom + 8;
+    if (top + height > window.innerHeight - 12) {
+      top = Math.max(12, rect.top - height - 8);
+    }
+    dialog.style.left = `${left}px`;
+    dialog.style.top = `${top}px`;
   }
 
   function openMorePopover(button) {
-    const existing = document.getElementById("pjm-more-popover");
+    const root = uiRoot();
+    const existing = root.getElementById("pjm-more-popover");
     if (existing && existing.dataset.pjmOwner === button.dataset.pjmOwner) {
       existing.remove();
       return;
@@ -1097,7 +1391,7 @@
       handleToolbarAction(actionButton.dataset.pjmAction);
       closeMorePopover();
     });
-    document.body.append(popover);
+    root.append(popover);
     const rect = button.getBoundingClientRect();
     const width = popover.offsetWidth || 132;
     const height = popover.offsetHeight || 220;
@@ -1424,41 +1718,27 @@
         background: #eff6ff;
         color: #1d4ed8;
       }
+      .pjm-selected-count {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+        padding: 2px 7px;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        background: #f8fafc;
+        color: #64748b;
+        font-weight: 700;
+        line-height: 18px;
+        white-space: nowrap;
+      }
+      .pjm-selected-count-active {
+        border-color: #7c3aed;
+        background: #f5f3ff;
+        color: #5b21b6;
+      }
       .pjm-more-wrap {
         position: relative;
         display: inline-flex;
-      }
-      #pjm-more-popover {
-        position: fixed;
-        display: grid;
-        gap: 4px;
-        z-index: 2147483645;
-        min-width: 132px;
-        padding: 5px;
-        border: 1px solid #cbd5e1;
-        border-radius: 4px;
-        background: #fff;
-        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
-        color: #334155;
-        font-family: Arial, sans-serif;
-        font-size: 12px;
-        text-transform: none !important;
-        letter-spacing: normal !important;
-      }
-      #pjm-more-popover button {
-        width: 100%;
-        border: 1px solid #cbd5e1;
-        border-radius: 4px;
-        background: #fff;
-        color: #334155;
-        font: inherit;
-        font-weight: 700;
-        line-height: 18px;
-        padding: 3px 7px;
-        text-align: left;
-        text-transform: none !important;
-        letter-spacing: normal !important;
-        cursor: pointer;
       }
       .pjm-filterbar label {
         display: inline-flex;
@@ -1548,6 +1828,12 @@
         text-decoration: none !important;
         text-shadow: none !important;
       }
+      button.pjm-chip {
+        appearance: none;
+        cursor: pointer;
+        font: inherit;
+        line-height: 1.4;
+      }
       .pjm-hidden-by-setting {
         display: none !important;
       }
@@ -1562,6 +1848,7 @@
       .pjm-q4, .pjm-b4 { border-color: #94a3b8; background: #f1f5f9; color: #475569; }
       .pjm-top { border-color: #2563eb; background: #eff6ff; color: #1d4ed8; }
       .pjm-warning { border-color: #dc2626; background: #fef2f2; color: #991b1b; }
+      .pjm-check { border-color: #f59e0b; background: #fffbeb; color: #92400e; }
       .pjm-risk {
         border-color: #dc2626 !important;
         background: #fef2f2 !important;
@@ -1635,136 +1922,6 @@
         border-top: 1px solid #e2e8f0;
         border-bottom: 1px solid #e2e8f0;
       }
-      #pjm-settings-modal {
-        position: fixed;
-        inset: 0;
-        z-index: 2147483646;
-        font-family: Arial, sans-serif;
-        text-transform: none !important;
-        letter-spacing: normal !important;
-      }
-      #pjm-settings-modal * {
-        text-transform: none !important;
-        letter-spacing: normal !important;
-        font-variant: normal !important;
-      }
-      .pjm-settings-backdrop {
-        position: absolute;
-        inset: 0;
-        background: rgba(15, 23, 42, 0.18);
-      }
-      .pjm-settings-dialog {
-        position: absolute;
-        top: 72px;
-        right: 28px;
-        width: min(320px, calc(100vw - 40px));
-        border: 1px solid #cbd5e1;
-        border-radius: 6px;
-        background: #fff;
-        box-shadow: 0 18px 46px rgba(15, 23, 42, 0.2);
-        color: #334155;
-        font-size: 13px;
-      }
-      .pjm-settings-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 9px 11px;
-        border-bottom: 1px solid #e2e8f0;
-      }
-      .pjm-settings-head button,
-      .pjm-settings-actions button {
-        appearance: none !important;
-        min-width: 0 !important;
-        min-height: 0 !important;
-        border: 1px solid #cbd5e1 !important;
-        border-radius: 4px !important;
-        background: #fff !important;
-        color: #334155 !important;
-        font: inherit !important;
-        font-weight: 700 !important;
-        cursor: pointer;
-      }
-      .pjm-settings-head button {
-        width: 28px !important;
-        height: 28px !important;
-        padding: 0 !important;
-        line-height: 26px !important;
-        text-align: center !important;
-      }
-      .pjm-settings-body {
-        display: grid;
-        gap: 7px;
-        padding: 10px 11px;
-      }
-      .pjm-settings-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        min-height: 22px;
-        margin: 0 !important;
-        padding: 0 !important;
-        line-height: 22px;
-        cursor: pointer;
-      }
-      #pjm-settings-modal .pjm-settings-row input[type="checkbox"] {
-        appearance: auto !important;
-        -webkit-appearance: checkbox !important;
-        display: inline-block !important;
-        flex: 0 0 auto;
-        width: 16px !important;
-        height: 16px !important;
-        min-width: 16px !important;
-        min-height: 16px !important;
-        margin: 0 !important;
-        opacity: 1 !important;
-        position: static !important;
-        visibility: visible !important;
-      }
-      .pjm-settings-row span {
-        display: inline-block;
-        line-height: 22px;
-      }
-      .pjm-settings-actions {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 6px;
-        padding: 10px 11px 11px;
-        border-top: 1px solid #e2e8f0;
-      }
-      .pjm-settings-actions button {
-        height: 28px !important;
-        padding: 5px 6px !important;
-        font-size: 12px !important;
-        line-height: 16px !important;
-      }
-      .pjm-floating-bar {
-        position: fixed;
-        right: 16px;
-        bottom: 16px;
-        z-index: 2147483644;
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        padding: 5px;
-        border: 1px solid #cbd5e1;
-        border-radius: 6px;
-        background: rgba(255, 255, 255, 0.96);
-        box-shadow: 0 10px 26px rgba(15, 23, 42, 0.16);
-        font-size: 12px;
-      }
-      .pjm-floating-bar a,
-      .pjm-floating-bar button {
-        border: 1px solid #cbd5e1;
-        border-radius: 4px;
-        background: #fff;
-        color: #334155;
-        padding: 3px 7px;
-        font-weight: 700;
-        line-height: 18px;
-        text-decoration: none !important;
-        cursor: pointer;
-      }
     `;
     document.head.appendChild(style);
   }
@@ -1777,7 +1934,7 @@
   function metricChip(label, value, className, record, match) {
     if (value === undefined || value === null || value === "") return "";
     const title = journalMetricDetails(record, match);
-    return `<span class="pjm-chip ${className || ""}" title="${escapeHtml(title)}"><strong>${escapeHtml(label)}</strong>${escapeHtml(value)}</span>`;
+    return `<button type="button" class="pjm-chip pjm-detail-chip ${className || ""}" title="${escapeHtml(title)}"><strong>${escapeHtml(label)}</strong>${escapeHtml(value)}</button>`;
   }
 
   function pubpeerUrl(target) {
@@ -1832,6 +1989,11 @@
     return `<span class="pjm-chip pjm-update pjm-loading" data-pjm-crossref-status-target="${escapeHtml(target)}" title="Checking Crossref update status">${escapeHtml("Update...")}</span>`;
   }
 
+  function checkChip(match) {
+    if (match?.confidence !== "low") return "";
+    return `<button type="button" class="pjm-chip pjm-check pjm-detail-chip" title="${escapeHtml(`Low-confidence match. ${matchDescription(match)}`)}">${escapeHtml("Check")}</button>`;
+  }
+
   function escapeHtml(value) {
     return String(value)
       .replace(/&/g, "&amp;")
@@ -1871,6 +2033,7 @@
       if (record.warning) {
         parts.push(chip("预警", record.warning, "pjm-warning"));
       }
+      parts.push(checkChip(options.match));
     }
     const citationTarget = options.citationTarget || options.scihubTarget;
     if (STATE.settings?.showCited !== false && (citationTarget || options.citationResult)) {
@@ -1924,6 +2087,7 @@
     hydrateUnpaywallChips(metrics);
     hydrateRiskChips(metrics);
     hydrateCrossrefStatusChips(metrics);
+    metrics.addEventListener("click", handleMetricsClick);
     applyFilters();
   }
 
@@ -1935,11 +2099,20 @@
     if (!next) return;
     annotateMetrics(next, record, options.scihubTarget || options.citationTarget, options);
     metrics.replaceWith(next);
+    next.addEventListener("click", handleMetricsClick);
     hydrateCitationChips(options.root || document);
     hydrateUnpaywallChips(options.root || document);
     hydrateRiskChips(options.root || document);
     hydrateCrossrefStatusChips(options.root || document);
     applyFilters();
+  }
+
+  function handleMetricsClick(event) {
+    const chipNode = event.target.closest(".pjm-detail-chip");
+    if (!chipNode) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openJournalDetail(chipNode.closest(`.${BADGE_CLASS}`), chipNode);
   }
 
   function applySettingsVisibility(root = document) {
@@ -1950,7 +2123,7 @@
     root.querySelectorAll?.(".pjm-pubpeer").forEach((node) => node.classList.toggle("pjm-hidden-by-setting", !settings.showPubpeer));
     root.querySelectorAll?.(".pjm-risk").forEach((node) => node.classList.toggle("pjm-hidden-by-setting", !settings.showRisk));
     root.querySelectorAll?.(".pjm-update").forEach((node) => node.classList.toggle("pjm-hidden-by-setting", !settings.showCrossrefStatus));
-    document.getElementById("pjm-floating-bar")?.classList.toggle("pjm-hidden-by-setting", !settings.showArticleFloatingBar);
+    uiRoot().getElementById("pjm-floating-bar")?.classList.toggle("pjm-hidden-by-setting", !settings.showArticleFloatingBar);
     applyPubmedAbstracts();
   }
 
@@ -2198,6 +2371,10 @@
       exportCurrentPage("ris", { scope: "selected" });
     } else if (action === "export-selected-bibtex") {
       exportCurrentPage("bibtex", { scope: "selected" });
+    } else if (action === "export-selected-csv") {
+      exportCurrentPage("csv", { scope: "selected" });
+    } else if (action === "export-selected-markdown") {
+      exportCurrentPage("markdown", { scope: "selected" });
     } else if (action === "copy-doi") {
       exportCurrentPage("doi", { scope: "visible" });
     } else if (action === "copy-cite") {
@@ -2238,6 +2415,7 @@
         <span class="pjm-more-wrap">
           <button type="button" data-pjm-action="more" data-pjm-owner="filterbar" title="More tools">More</button>
         </span>
+        <span class="pjm-selected-count" data-pjm-selected-count title="Selected records">Selected 0</span>
       </span>
     `;
     bar.addEventListener("click", (event) => {
@@ -2266,6 +2444,7 @@
     });
     placeFilterbar(bar);
     syncFilterbar();
+    updateSelectedCount();
   }
 
   function syncFilterbar() {
@@ -2278,6 +2457,25 @@
     bar.querySelector("[data-pjm-action='toggle-abstracts']")?.classList.toggle("pjm-active", Boolean(STATE.settings?.pubmedAbstracts));
     const input = bar.querySelector("input[data-pjm-filter='minIf']");
     if (input && input.value !== String(filters.minIf || "")) input.value = filters.minIf || "";
+    updateSelectedCount();
+  }
+
+  function selectedResultCount() {
+    if (!isResultListPage()) return 0;
+    const items = new Set();
+    for (const metrics of document.querySelectorAll(`.${BADGE_CLASS}`)) {
+      const item = resultItemForMetrics(metrics);
+      if (isSelectedResultItem(item)) items.add(item);
+    }
+    return items.size;
+  }
+
+  function updateSelectedCount() {
+    const node = document.querySelector("[data-pjm-selected-count]");
+    if (!node) return;
+    const count = selectedResultCount();
+    node.textContent = `Selected ${count}`;
+    node.classList.toggle("pjm-selected-count-active", count > 0);
   }
 
   function metricsMatchFilters(metrics) {
@@ -2399,6 +2597,7 @@
         pmid,
         url: item?.querySelector?.("a[href]")?.href || location.href,
         record,
+        metrics,
       };
     }).filter((item) => item.title || item.doi || item.pmid || item.journal);
   }
@@ -2442,6 +2641,32 @@
     return `"${String(value || "").replace(/"/g, '""')}"`;
   }
 
+  function markdownCell(value) {
+    return String(value || "").replace(/\|/g, "\\|").replace(/\r?\n+/g, " ").trim();
+  }
+
+  function chipText(item, selector) {
+    return String(item?.metrics?.querySelector?.(selector)?.textContent || "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function selectedExportRows(items) {
+    return items.map((item) => ({
+      title: item.title,
+      journal: item.journal,
+      year: item.year,
+      doi: item.doi,
+      pmid: item.pmid,
+      ifValue: item.record?.if || item.record?.impactFactor || item.record?.IF || "",
+      jcr: item.record?.jcr || item.record?.jcrQuartile || "",
+      cas: item.record?.cas || "",
+      cited: chipText(item, ".pjm-cited").replace(/^Cited\s*/i, ""),
+      oa: chipText(item, ".pjm-unpaywall"),
+      url: item.url,
+    }));
+  }
+
   function itemCitationText(item) {
     const pieces = [];
     if (item.title) pieces.push(item.title.replace(/\.$/, ""));
@@ -2456,26 +2681,28 @@
     if (format === "doi") return unique(items.map((item) => item.doi)).join("\n");
     if (format === "pmid") return unique(items.map((item) => item.pmid)).join("\n");
     if (format === "csv") {
-      const rows = [["Title", "Journal", "Year", "DOI", "PMID", "IF", "JCR", "CAS", "URL"]];
-      for (const item of items) {
+      const rows = [["Title", "Journal", "Year", "DOI", "PMID", "IF", "JCR", "CAS", "Cited", "OA", "URL"]];
+      for (const item of selectedExportRows(items)) {
         rows.push([
           item.title,
           item.journal,
           item.year,
           item.doi,
           item.pmid,
-          item.record?.if || item.record?.impactFactor || item.record?.IF || "",
-          item.record?.jcr || item.record?.jcrQuartile || "",
-          item.record?.cas || "",
+          item.ifValue,
+          item.jcr,
+          item.cas,
+          item.cited,
+          item.oa,
           item.url,
         ]);
       }
       return rows.map((row) => row.map(csvEscape).join(",")).join("\n");
     }
     if (format === "markdown") {
-      const lines = ["| Title | Journal | Year | IF | JCR | CAS | DOI |", "|---|---|---:|---:|---|---|---|"];
-      for (const item of items) {
-        lines.push(`| ${item.title || ""} | ${item.journal || ""} | ${item.year || ""} | ${item.record?.if || ""} | ${item.record?.jcr || ""} | ${item.record?.cas || ""} | ${item.doi || ""} |`);
+      const lines = ["| Title | Journal | Year | IF | JCR | CAS | Cited | OA | DOI | URL |", "|---|---|---:|---:|---|---|---:|---|---|---|"];
+      for (const item of selectedExportRows(items)) {
+        lines.push(`| ${markdownCell(item.title)} | ${markdownCell(item.journal)} | ${markdownCell(item.year)} | ${markdownCell(item.ifValue)} | ${markdownCell(item.jcr)} | ${markdownCell(item.cas)} | ${markdownCell(item.cited)} | ${markdownCell(item.oa)} | ${markdownCell(item.doi)} | ${markdownCell(item.url)} |`);
       }
       return lines.join("\n");
     }
@@ -2581,6 +2808,7 @@
     label.className = "pjm-scholar-select";
     label.title = "Select for export";
     label.innerHTML = '<input type="checkbox" data-pjm-scholar-selected="1">';
+    label.querySelector("input")?.addEventListener("change", updateSelectedCount);
     titleNode.insertAdjacentElement("afterbegin", label);
   }
 
@@ -2768,16 +2996,17 @@
 
   function ensureFloatingArticleBar() {
     if (isResultListPage() || STATE.settings?.showArticleFloatingBar === false) {
-      document.getElementById("pjm-floating-bar")?.remove();
+      removeUiNode("pjm-floating-bar");
       return;
     }
     const target = getScihubTarget(document);
     const doi = normalizeDoi(target);
     if (!target && !doi) {
-      document.getElementById("pjm-floating-bar")?.remove();
+      removeUiNode("pjm-floating-bar");
       return;
     }
-    const bar = document.getElementById("pjm-floating-bar") || document.createElement("div");
+    const root = uiRoot();
+    const bar = root.getElementById("pjm-floating-bar") || document.createElement("div");
     bar.id = "pjm-floating-bar";
     bar.className = "pjm-floating-bar";
     const links = [];
@@ -2793,7 +3022,7 @@
       if (!event.target.closest("[data-pjm-floating-cite]")) return;
       exportCurrentPage("cite", { scope: "visible" });
     };
-    if (!bar.parentElement) document.body.append(bar);
+    if (!bar.parentElement) root.append(bar);
   }
 
   function processPage() {
@@ -2831,8 +3060,14 @@
       }, 120);
     });
     document.addEventListener("click", (event) => {
-      if (event.target.closest(".pjm-more-wrap, #pjm-more-popover")) return;
+      if (
+        event.target.closest(".pjm-more-wrap") ||
+        eventPathHas(event, (node) => node.id === "pjm-more-popover" || node.id === "pjm-detail-modal" || node.id === "pjm-settings-modal")
+      ) return;
       closeMorePopover();
+    });
+    document.addEventListener("change", (event) => {
+      if (event.target.closest("input[type='checkbox']")) updateSelectedCount();
     });
   }
 
