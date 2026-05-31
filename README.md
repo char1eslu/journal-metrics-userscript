@@ -34,6 +34,8 @@ The metrics row is intentionally compact. It can show:
 
 Click an IF/JCR/CAS chip to open a journal-detail popup with the matched journal, ISSN, data date and match route. Low-confidence page-text matches also show a `Check` chip.
 
+When a result has DOI/title/citation data but no journal match, a small `Fix` chip can appear. Use it to map the page's journal text to a known journal name, abbreviation or ISSN. The alias is stored locally in Tampermonkey and can be cleared from Settings.
+
 ## Supported Sites
 
 The script has dedicated handlers for:
@@ -78,7 +80,7 @@ Use `Journal Metrics: Settings` from the Tampermonkey menu or the toolbar `Setti
 - article-page floating bar
 - PubMed abstracts/snippets
 
-The same panel can refresh journal/Sci-Hub data and clear citation, OA, Crossref and risk caches.
+The same panel shows current journal data date, Sci-Hub domain state, cache counts and manual alias count. It can refresh journal/Sci-Hub data and clear citation, OA, Crossref, risk and manual-alias caches.
 
 ## Citation Counts
 

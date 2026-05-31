@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.27
+// @version      0.3.28
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @license      MIT
@@ -125,6 +125,7 @@
     scihubDomainsCacheKey: "journal-metrics:scihub-domains:v1",
     scihubDomainsCacheTimeKey: "journal-metrics:scihub-domains-time:v1",
     scihubManualDomainsKey: "journal-metrics:scihub-manual-domains:v1",
+    manualAliasesKey: "journal-metrics:manual-aliases:v1",
     citationsCacheKey: "journal-metrics:citations:v2",
     unpaywallCacheKey: "journal-metrics:unpaywall:v2",
     riskCacheKey: "journal-metrics:risk:v1",
@@ -205,6 +206,7 @@
     processing: false,
     filters: null,
     settings: null,
+    manualAliases: {},
   };
 
   const STYLE_ID = "pjm-style";
@@ -221,6 +223,10 @@
       .trim()
       .replace(/\s+/g, " ")
       .toUpperCase();
+  }
+
+  function manualAliasKey(value) {
+    return normalizeKey(value).toLowerCase();
   }
 
   function normalizeIssn(value) {
@@ -277,6 +283,22 @@
     const confidence = match.confidence ? `, ${match.confidence}` : "";
     const source = match.source ? ` (${match.source})` : "";
     return `Matched by ${match.method}${confidence}${source}`;
+  }
+
+  function resolutionDescription(options = {}) {
+    const parts = [];
+    if (options.match?.method) parts.push(matchDescription(options.match));
+    if (options.resolvedBy) parts.push(`Resolved by ${options.resolvedBy}`);
+    if (!options.match?.method && !options.resolvedBy) {
+      parts.push(options.record ? "Journal matched" : "Journal not matched");
+    }
+    if (options.scihubTarget || options.citationTarget) {
+      const doi = normalizeDoi(options.scihubTarget || options.citationTarget);
+      const pmid = normalizePmid(options.citationTarget || options.scihubTarget);
+      if (doi) parts.push(`DOI: ${doi}`);
+      else if (pmid) parts.push(`PMID: ${pmid}`);
+    }
+    return parts.join("\n");
   }
 
   function unique(values) {
@@ -1033,6 +1055,33 @@
     GM_setValue(CONFIG.settingsKey, JSON.stringify(STATE.settings));
   }
 
+  function loadManualAliases() {
+    try {
+      return JSON.parse(GM_getValue(CONFIG.manualAliasesKey, "{}")) || {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveManualAliases(aliases) {
+    STATE.manualAliases = aliases || {};
+    GM_setValue(CONFIG.manualAliasesKey, JSON.stringify(STATE.manualAliases));
+  }
+
+  function cacheObjectCount(key) {
+    try {
+      const value = JSON.parse(GM_getValue(key, "{}"));
+      return value && typeof value === "object" ? Object.keys(value).length : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  function dateFromStoredTime(key) {
+    const time = Number(GM_getValue(key, 0));
+    return time ? new Date(time).toISOString().slice(0, 10) : "";
+  }
+
   function clearCacheKeys(keys) {
     for (const key of keys) GM_setValue(key, "");
   }
@@ -1159,6 +1208,30 @@
         position: static;
         visibility: visible;
       }
+      .pjm-settings-status {
+        display: grid;
+        gap: 5px;
+        margin-top: 3px;
+        padding-top: 8px;
+        border-top: 1px solid #e2e8f0;
+        color: #475569;
+        font-size: 12px;
+        line-height: 16px;
+      }
+      .pjm-settings-status-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .pjm-settings-status-row span:first-child {
+        color: #64748b;
+        font-weight: 700;
+      }
+      .pjm-settings-status-row span:last-child {
+        color: #334155;
+        text-align: right;
+        overflow-wrap: anywhere;
+      }
       .pjm-settings-actions {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1226,6 +1299,11 @@
         color: #334155;
         overflow-wrap: anywhere;
       }
+      .pjm-detail-note {
+        color: #64748b;
+        font-size: 12px;
+        line-height: 16px;
+      }
       .pjm-hidden-by-setting {
         display: none !important;
       }
@@ -1274,6 +1352,30 @@
     `).join("");
   }
 
+  function settingsStatusRows() {
+    const rows = [
+      ["Journal data", STATE.data?.meta?.updated || "embedded/sample"],
+      ["Data cache", dateFromStoredTime(CONFIG.cacheTimeKey) || "embedded"],
+      ["Sci-Hub domains", dateFromStoredTime(CONFIG.scihubDomainsCacheTimeKey) || (GM_getValue(CONFIG.scihubManualDomainsKey, "") ? "manual" : "fallback")],
+      ["Current Sci-Hub", STATE.scihubDomains?.[0] || "none"],
+      ["Manual aliases", String(Object.keys(STATE.manualAliases || {}).length)],
+      ["Citation cache", String(cacheObjectCount(CONFIG.citationsCacheKey))],
+      ["OA cache", String(cacheObjectCount(CONFIG.unpaywallCacheKey))],
+      ["Crossref cache", String(cacheObjectCount(CONFIG.crossrefCacheKey))],
+      ["Risk cache", String(cacheObjectCount(CONFIG.riskCacheKey))],
+    ];
+    return `
+      <div class="pjm-settings-status" aria-label="Data status">
+        ${rows.map(([key, value]) => `
+          <div class="pjm-settings-status-row">
+            <span>${escapeHtml(key)}</span>
+            <span>${escapeHtml(value)}</span>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
   function openSettingsPanel() {
     removeUiNode("pjm-settings-modal");
     const modal = document.createElement("div");
@@ -1285,12 +1387,13 @@
           <strong>Journal Metrics</strong>
           <button type="button" data-pjm-close-settings="1" title="Close">×</button>
         </div>
-        <div class="pjm-settings-body">${settingsRows()}</div>
+        <div class="pjm-settings-body">${settingsRows()}${settingsStatusRows()}</div>
         <div class="pjm-settings-actions">
           <button type="button" data-pjm-cache="data">Refresh data</button>
           <button type="button" data-pjm-cache="citations">Clear citations</button>
           <button type="button" data-pjm-cache="oa">Clear OA</button>
           <button type="button" data-pjm-cache="crossref">Clear Crossref</button>
+          <button type="button" data-pjm-cache="aliases">Clear aliases</button>
         </div>
       </div>
     `;
@@ -1306,6 +1409,7 @@
       if (cache === "citations") clearCacheKeys([CONFIG.citationsCacheKey]);
       if (cache === "oa") clearCacheKeys([CONFIG.unpaywallCacheKey]);
       if (cache === "crossref") clearCacheKeys([CONFIG.crossrefCacheKey, CONFIG.riskCacheKey]);
+      if (cache === "aliases") saveManualAliases({});
       window.alert("Cache cleared. Reloading page.");
       reloadSoon();
     });
@@ -1341,6 +1445,47 @@
 
   function closeDetailPanel() {
     removeUiNode("pjm-detail-modal");
+  }
+
+  function openManualAliasPrompt(metrics) {
+    if (!metrics?.dataset?.pjmFixQuery) return;
+    let query = null;
+    try {
+      query = JSON.parse(metrics.dataset.pjmFixQuery || "null");
+    } catch {
+      query = null;
+    }
+    if (!query) return;
+    const source = firstText(query.journal, query.abbrev, ...(query.aliases || []));
+    const input = window.prompt(
+      source
+        ? `Map this page journal text to a known journal:\n${source}\n\nEnter the exact journal name, abbreviation, or ISSN:`
+        : "Enter the exact journal name, abbreviation, or ISSN:",
+      ""
+    );
+    if (input === null) return;
+    const target = String(input || "").trim();
+    if (!target) return;
+    const lookup = lookupJournalWithMatch({ journal: target, abbrev: target, issn: target, aliases: [target] });
+    if (!lookup.record) {
+      window.alert("No matching journal found in local data. Try the full journal name or ISSN.");
+      return;
+    }
+    const aliases = { ...(STATE.manualAliases || {}) };
+    let added = 0;
+    for (const candidate of manualAliasCandidates(query)) {
+      const key = manualAliasKey(candidate);
+      if (!key) continue;
+      aliases[key] = lookup.record.journal;
+      added += 1;
+    }
+    if (!added) {
+      window.alert("No source journal text was available for this result.");
+      return;
+    }
+    saveManualAliases(aliases);
+    window.alert(`Saved ${added} local alias${added === 1 ? "" : "es"} to ${lookup.record.journal}. Reloading page.`);
+    reloadSoon();
   }
 
   function detailRows(record, match) {
@@ -1515,12 +1660,37 @@
     return { byName, byIssn };
   }
 
+  function manualAliasCandidates(query) {
+    return unique([query?.journal, query?.abbrev, ...(query?.aliases || [])])
+      .filter((candidate) => {
+        const text = String(candidate || "").replace(/\s+/g, " ").trim();
+        const key = manualAliasKey(text);
+        return key.length >= 6 && !/\.{3,}|…/.test(text);
+      });
+  }
+
+  function lookupManualAlias(query) {
+    if (!query || !STATE.indexes) return { record: null, match: null };
+    for (const candidate of manualAliasCandidates(query)) {
+      const aliasKey = manualAliasKey(candidate);
+      const targetName = aliasKey ? STATE.manualAliases?.[aliasKey] : "";
+      const record = targetName ? STATE.indexes.byName.get(normalizeKey(targetName)) : null;
+      if (record) {
+        return { record, match: { method: "manual alias", confidence: "high", source: candidate } };
+      }
+    }
+    return { record: null, match: null };
+  }
+
   function lookupJournal(query) {
     return lookupJournalWithMatch(query).record;
   }
 
   function lookupJournalWithMatch(query) {
     if (!query || !STATE.indexes) return { record: null, match: null };
+    const manual = lookupManualAlias(query);
+    if (manual.record) return manual;
+
     const issn = normalizeIssn(query.issn);
     if (issn && STATE.indexes.byIssn.has(issn)) {
       return { record: STATE.indexes.byIssn.get(issn), match: { method: "ISSN", confidence: "high", source: issn } };
@@ -1649,9 +1819,9 @@
       if (!record && !resolvedTarget) return;
       const citationResult = scholarCitationResult(result);
       if (metrics) {
-        updateMetrics(metrics, record, { scihubTarget: resolvedTarget, citationResult, match, root: result });
+        updateMetrics(metrics, record, { scihubTarget: resolvedTarget, citationResult, match, resolvedBy: "OpenAlex", root: result });
       } else {
-        insertMetrics(targetNode, record, { scihubTarget: resolvedTarget, citationResult, match });
+        insertMetrics(targetNode, record, { scihubTarget: resolvedTarget, citationResult, match, resolvedBy: "OpenAlex" });
       }
     } catch {
       // Keep the locally parsed result when OpenAlex title resolution fails.
@@ -1677,6 +1847,7 @@
         citationResult: currentCitationResult,
         statuses: info.status,
         statusSource: "Crossref",
+        resolvedBy: "Crossref",
         match,
         root: container,
       };
@@ -1934,6 +2105,7 @@
       .pjm-top { border-color: #2563eb !important; background: #eff6ff !important; color: #1d4ed8 !important; }
       .pjm-warning { border-color: #dc2626 !important; background: #fef2f2 !important; color: #991b1b !important; }
       .pjm-check { border-color: #f59e0b !important; background: #fffbeb !important; color: #92400e !important; }
+      .pjm-fix-journal { border-color: #64748b !important; background: #f8fafc !important; color: #334155 !important; }
       .pjm-risk {
         border-color: #dc2626 !important;
         background: #fef2f2 !important;
@@ -2080,6 +2252,13 @@
     return `<button type="button" class="pjm-chip pjm-check pjm-detail-chip" title="${escapeHtml(`Low-confidence match. ${matchDescription(match)}`)}">${escapeHtml("Check")}</button>`;
   }
 
+  function fixJournalChip(query, resolvedBy = "") {
+    if (!query) return "";
+    const source = firstText(query.journal, query.abbrev, ...(query.aliases || []));
+    const note = resolvedBy ? `; ${resolvedBy} resolved DOI/title only` : "";
+    return `<button type="button" class="pjm-chip pjm-fix-journal" title="${escapeHtml(`Set a local journal alias for this result${source ? ` (${source})` : ""}${note}`)}">${escapeHtml("Fix")}</button>`;
+  }
+
   function escapeHtml(value) {
     return String(value)
       .replace(/&/g, "&amp;")
@@ -2120,6 +2299,8 @@
         parts.push(chip("预警", record.warning, "pjm-warning"));
       }
       parts.push(checkChip(options.match));
+    } else if (options.fixQuery) {
+      parts.push(fixJournalChip(options.fixQuery, options.resolvedBy));
     }
     const citationTarget = options.citationTarget || options.scihubTarget;
     if (STATE.settings?.showCited !== false && (citationTarget || options.citationResult)) {
@@ -2142,7 +2323,8 @@
       ? `<span class="pjm-muted">data ${escapeHtml(STATE.data.meta.updated)}</span>`
       : "";
 
-    return `<span class="${BADGE_CLASS}${options.inline ? " pjm-inline" : ""}" title="${escapeHtml(record?.journal || "")}">${parts.join("")}${source}</span>`;
+    const title = resolutionDescription({ ...options, record });
+    return `<span class="${BADGE_CLASS}${options.inline ? " pjm-inline" : ""}" title="${escapeHtml(title)}">${parts.join("")}${source}</span>`;
   }
 
   function annotateMetrics(metrics, record, target, options = {}) {
@@ -2150,12 +2332,14 @@
     metrics.dataset.pjmRecord = record ? JSON.stringify(record) : "";
     metrics.dataset.pjmTarget = String(target || "");
     metrics.dataset.pjmMatch = options.match ? JSON.stringify(options.match) : "";
+    metrics.dataset.pjmFixQuery = options.fixQuery ? JSON.stringify(options.fixQuery) : "";
+    metrics.dataset.pjmResolvedBy = options.resolvedBy || "";
     if (record?.journal) metrics.dataset.pjmJournal = record.journal;
   }
 
   function insertMetrics(target, record, options = {}) {
     if (!target || target.querySelector?.(`.${BADGE_CLASS}`)) return;
-    if (!record && !options.scihubTarget && !options.citationTarget && !options.citationResult) return;
+    if (!record && !options.scihubTarget && !options.citationTarget && !options.citationResult && !options.fixQuery) return;
     const wrapper = document.createElement(options.inline ? "span" : "div");
     wrapper.innerHTML = renderMetrics(record, options);
     const metrics = wrapper.firstElementChild;
@@ -2181,6 +2365,7 @@
     if (!metrics) return;
     let resolvedRecord = record;
     let resolvedMatch = options.match;
+    let resolvedFixQuery = options.fixQuery;
     if (!resolvedRecord && metrics.dataset.pjmRecord) {
       try {
         resolvedRecord = JSON.parse(metrics.dataset.pjmRecord);
@@ -2189,11 +2374,18 @@
         resolvedRecord = record;
       }
     }
+    if (!resolvedFixQuery && metrics.dataset.pjmFixQuery) {
+      try {
+        resolvedFixQuery = JSON.parse(metrics.dataset.pjmFixQuery);
+      } catch {
+        resolvedFixQuery = options.fixQuery;
+      }
+    }
     const wrapper = document.createElement("div");
-    wrapper.innerHTML = renderMetrics(resolvedRecord, { ...options, match: resolvedMatch });
+    wrapper.innerHTML = renderMetrics(resolvedRecord, { ...options, match: resolvedMatch, fixQuery: resolvedRecord ? null : resolvedFixQuery });
     const next = wrapper.firstElementChild;
     if (!next) return;
-    annotateMetrics(next, resolvedRecord, options.scihubTarget || options.citationTarget, { ...options, match: resolvedMatch });
+    annotateMetrics(next, resolvedRecord, options.scihubTarget || options.citationTarget, { ...options, match: resolvedMatch, fixQuery: resolvedRecord ? null : resolvedFixQuery });
     metrics.replaceWith(next);
     next.addEventListener("click", handleMetricsClick);
     hydrateCitationChips(options.root || document);
@@ -2204,6 +2396,13 @@
   }
 
   function handleMetricsClick(event) {
+    const fixNode = event.target.closest(".pjm-fix-journal");
+    if (fixNode) {
+      event.preventDefault();
+      event.stopPropagation();
+      openManualAliasPrompt(fixNode.closest(`.${BADGE_CLASS}`));
+      return;
+    }
     const chipNode = event.target.closest(".pjm-detail-chip");
     if (!chipNode) return;
     event.preventDefault();
@@ -2868,7 +3067,7 @@
       const scihubTarget = getScihubTarget(article);
       const citationTarget = getPubmedId(article) || scihubTarget;
       const citationContainer = article.querySelector(".docsum-citation") || journalNode?.parentElement || article;
-      insertMetrics(citationContainer, record, { scihubTarget, citationTarget, match });
+      insertMetrics(citationContainer, record, { scihubTarget, citationTarget, match, fixQuery: { journal: abbrev, abbrev, aliases: [journalNode?.textContent || ""] } });
     }
     applyPubmedAbstracts();
   }
@@ -2882,14 +3081,15 @@
       const title = getScholarResultTitle(result);
       const doi = getArticleDoi(result);
       const journal = maybeJournalFromScholarMeta(meta);
-      const lookup = lookupJournalWithMatch({ journal, abbrev: journal });
+      const lookup = lookupJournalWithMatch({ journal, abbrev: journal, aliases: [meta, title] });
       const { record, match } = lookup;
       if (!record && !doi && !title) continue;
       result.dataset.pjmProcessed = "1";
       const target = result.querySelector(".gs_ri") || result;
       ensureScholarSelection(result, target);
       const citationResult = scholarCitationResult(result);
-      insertMetrics(target, record, { scihubTarget: doi, citationResult, match });
+      const fixQuery = { journal, abbrev: journal, aliases: [meta, title] };
+      insertMetrics(target, record, { scihubTarget: doi, citationResult, match, fixQuery });
       const metrics = target.querySelector(`.${BADGE_CLASS}`);
       hydrateScholarResultFromOpenAlex(result, target, metrics, title, doi);
       hydrateResultFromCrossref(result, target, metrics, title, doi, record, match, citationResult);
@@ -2926,12 +3126,12 @@
         item.querySelector(".venue")?.textContent,
         item.querySelector(".journal")?.textContent
       );
-      const lookup = lookupJournalWithMatch({ journal, abbrev: journal });
+      const title = firstText(item.querySelector("h1, h2, h3, .title, .paper-title, [data-test='title'], [data-testid='title']")?.textContent);
+      const lookup = lookupJournalWithMatch({ journal, abbrev: journal, aliases: [title] });
       const { record, match } = lookup;
       if (!record && !doi) continue;
       item.dataset.pjmProcessed = "1";
-      insertMetrics(item, record, { scihubTarget: doi, match });
-      const title = firstText(item.querySelector("h1, h2, h3, .title, .paper-title, [data-test='title'], [data-testid='title']")?.textContent);
+      insertMetrics(item, record, { scihubTarget: doi, match, fixQuery: { journal, abbrev: journal, aliases: [title] } });
       hydrateResultFromCrossref(item, item, item.querySelector(`.${BADGE_CLASS}`), title, doi, record, match);
     }
   }
@@ -2966,7 +3166,7 @@
       journal: journalTitle || ariaJournal,
       abbrev: publisherAbbrev,
       issn,
-      aliases: [ariaJournal],
+      aliases: [ariaJournal, getMetaContent("citation_title"), document.querySelector("h1")?.textContent],
     };
   }
 
@@ -3014,7 +3214,7 @@
       journal: journal || jsonLd.journal || scienceJournal || visibleJournal,
       abbrev,
       issn: issn || jsonLd.issn,
-      aliases: [visibleJournal, getMetaContent("citation_publisher"), getMetaContent("prism.publisher")],
+      aliases: [visibleJournal, getMetaContent("citation_publisher"), getMetaContent("prism.publisher"), getMetaContent("citation_title", "dc.Title", "dc.title", "og:title"), document.querySelector("h1")?.textContent],
     };
   }
 
@@ -3073,7 +3273,7 @@
         } catch {
           previousRecord = null;
         }
-        updateMetrics(existingMetrics, record || previousRecord, { showSource: true, scihubTarget, match, root: panel || document });
+        updateMetrics(existingMetrics, record || previousRecord, { showSource: true, scihubTarget, match, fixQuery: query, root: panel || document });
       }
       return;
     }
@@ -3084,7 +3284,7 @@
     const nextPanel = panel || document.createElement("div");
     nextPanel.className = "pjm-panel";
     if (!panel) findGenericInsertTarget().insertAdjacentElement("afterend", nextPanel);
-    insertMetrics(nextPanel, record, { showSource: true, scihubTarget, match });
+    insertMetrics(nextPanel, record, { showSource: true, scihubTarget, match, fixQuery: query });
     const title = firstText(getMetaContent("citation_title", "dc.Title", "dc.title", "og:title"), document.querySelector("h1")?.textContent);
     hydrateResultFromCrossref(document.body, nextPanel, nextPanel.querySelector(`.${BADGE_CLASS}`), title, scihubTarget, record, match);
   }
@@ -3173,6 +3373,7 @@
     STATE.scihubDomains = scihubDomains;
     STATE.filters = loadFilters();
     STATE.settings = loadSettings();
+    STATE.manualAliases = loadManualAliases();
     STATE.indexes = buildIndexes(STATE.data);
     processPage();
     observePageChanges();
