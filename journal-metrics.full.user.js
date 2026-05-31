@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.5
+// @version      0.3.6
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -454,15 +454,6 @@
 
   function citationCacheKey(target) {
     return String(target || "").trim().toLowerCase();
-  }
-
-  function citationSourceLabel(source) {
-    const cleanSource = String(source || "").trim().toLowerCase();
-    if (cleanSource === "google scholar") return "GS";
-    if (cleanSource === "nih icite") return "NIH";
-    if (cleanSource === "openalex") return "OA";
-    if (cleanSource === "semantic scholar") return "S2";
-    return "Cited";
   }
 
   function citationSourceTitle(source) {
@@ -1159,8 +1150,7 @@
 
   function citedChip(target, result = null) {
     if (result && Number.isFinite(result.count)) {
-      const label = citationSourceLabel(result.source);
-      return `<span class="pjm-chip pjm-cited" title="${escapeHtml(citationResultTitle(result))}"><strong>${escapeHtml(label)}</strong>${escapeHtml(String(result.count))}</span>`;
+      return `<span class="pjm-chip pjm-cited" title="${escapeHtml(citationResultTitle(result))}"><strong>Cited</strong>${escapeHtml(String(result.count))}</span>`;
     }
     if (!target) return "";
     return `<span class="pjm-chip pjm-cited pjm-loading" data-pjm-citation-target="${escapeHtml(target)}" title="Checking citation count"><strong>Cited</strong>...</span>`;
@@ -1278,7 +1268,7 @@
           return;
         }
         chipNode.classList.remove("pjm-loading", "pjm-failed");
-        chipNode.innerHTML = `<strong>${escapeHtml(citationSourceLabel(result.source))}</strong>${escapeHtml(String(result.count))}`;
+        chipNode.innerHTML = `<strong>Cited</strong>${escapeHtml(String(result.count))}`;
         chipNode.title = citationResultTitle(result);
       }).catch(() => {
         chipNode.classList.remove("pjm-loading");

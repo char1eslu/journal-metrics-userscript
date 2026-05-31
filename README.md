@@ -44,12 +44,12 @@ The same toolbar can export detected page items as RIS or BibTeX. DOI-backed exp
 
 ## Citation Count
 
-The citation chip is loaded compactly with a short source label:
+The citation chip always displays as `Cited <count>` to keep the metrics row compact. Hover over the chip to see the source:
 
-1. `GS`: the visible citation count already present on Google Scholar result pages.
-2. `NIH`: NIH iCite, used first when a PMID is available, especially on PubMed.
-3. `OA`: OpenAlex, using DOI or PMID.
-4. `S2`: Semantic Scholar, as a fallback.
+1. Google Scholar visible citation count on Google Scholar result pages.
+2. NIH iCite, used first when a PMID is available, especially on PubMed.
+3. OpenAlex, using DOI or PMID.
+4. Semantic Scholar, as a fallback.
 
 Google Scholar still has no stable official public API for this use case, so the script only reads the citation count that Google Scholar has already rendered on the current result card. On other sites, citation counts may differ because each source has different coverage and deduplication.
 
