@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.19
+// @version      0.3.20
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -1327,8 +1327,7 @@
         border-radius: 4px;
         background: #ffffff;
         box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
-        overflow-x: auto;
-        scrollbar-width: thin;
+        overflow: visible;
       }
       .pjm-filterbar-pubmed .pjm-filterbar-group {
         flex-wrap: nowrap;
@@ -1576,6 +1575,13 @@
         inset: 0;
         z-index: 2147483646;
         font-family: Arial, sans-serif;
+        text-transform: none !important;
+        letter-spacing: normal !important;
+      }
+      #pjm-settings-modal * {
+        text-transform: none !important;
+        letter-spacing: normal !important;
+        font-variant: normal !important;
       }
       .pjm-settings-backdrop {
         position: absolute;
