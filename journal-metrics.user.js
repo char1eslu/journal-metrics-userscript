@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.21
+// @version      0.3.22
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -1535,7 +1535,7 @@
         margin-top: 4px;
       }
       .pjm-chip {
-        display: inline-flex;
+        display: inline-flex !important;
         align-items: center;
         min-height: 18px;
         border: 1px solid #cbd5e1;
@@ -1545,6 +1545,8 @@
         color: #334155;
         font-weight: 600;
         white-space: nowrap;
+        text-decoration: none !important;
+        text-shadow: none !important;
       }
       .pjm-hidden-by-setting {
         display: none !important;
@@ -1561,18 +1563,18 @@
       .pjm-top { border-color: #2563eb; background: #eff6ff; color: #1d4ed8; }
       .pjm-warning { border-color: #dc2626; background: #fef2f2; color: #991b1b; }
       .pjm-risk {
-        border-color: #dc2626;
-        background: #fef2f2;
-        color: #991b1b;
+        border-color: #dc2626 !important;
+        background: #fef2f2 !important;
+        color: #991b1b !important;
         text-decoration: none !important;
       }
       .pjm-risk.pjm-loading {
         display: none;
       }
       .pjm-pubpeer {
-        border-color: #64748b;
-        background: #f8fafc;
-        color: #334155;
+        border-color: #64748b !important;
+        background: #f8fafc !important;
+        color: #334155 !important;
         text-decoration: none !important;
       }
       .pjm-update {
@@ -1588,44 +1590,44 @@
       .pjm-cited.pjm-failed { border-color: #cbd5e1; background: #f8fafc; color: #64748b; }
       .pjm-muted { color: #64748b; font-weight: 500; }
       .pjm-scihub {
-        border-color: #0f766e;
-        background: #ecfdf5;
-        color: #0f766e;
+        border-color: #0f766e !important;
+        background: #ecfdf5 !important;
+        color: #0f766e !important;
         text-decoration: none !important;
       }
       .pjm-unpaywall {
-        border-color: #d97706;
-        background: #fff7ed;
-        color: #9a3412;
+        border-color: #d97706 !important;
+        background: #fff7ed !important;
+        color: #9a3412 !important;
         text-decoration: none !important;
       }
       .pjm-unpaywall.pjm-oa {
-        border-color: #16a34a;
-        background: #f0fdf4;
-        color: #166534;
+        border-color: #16a34a !important;
+        background: #f0fdf4 !important;
+        color: #166534 !important;
       }
       .pjm-unpaywall.pjm-closed {
-        border-color: #94a3b8;
-        background: #f8fafc;
-        color: #64748b;
+        border-color: #94a3b8 !important;
+        background: #f8fafc !important;
+        color: #64748b !important;
       }
       .pjm-unpaywall.pjm-unknown {
-        border-color: #cbd5e1;
-        background: #f8fafc;
-        color: #475569;
+        border-color: #cbd5e1 !important;
+        background: #f8fafc !important;
+        color: #475569 !important;
       }
       .pjm-unpaywall.pjm-pdf {
-        border-color: #dc2626;
-        background: #fef2f2;
-        color: #991b1b;
+        border-color: #dc2626 !important;
+        background: #fef2f2 !important;
+        color: #991b1b !important;
       }
       .pjm-scihub:hover {
-        background: #ccfbf1;
-        color: #115e59;
+        background: #ccfbf1 !important;
+        color: #115e59 !important;
       }
       .pjm-unpaywall:hover {
-        background: #ffedd5;
-        color: #7c2d12;
+        background: #ffedd5 !important;
+        color: #7c2d12 !important;
       }
       .pjm-panel {
         margin: 12px 0;
