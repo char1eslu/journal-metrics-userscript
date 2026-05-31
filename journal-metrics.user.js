@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.3
+// @version      0.3.4
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -1239,9 +1239,56 @@
     }
   }
 
+  function isGenericResultListHost() {
+    return [
+      "search.crossref.org",
+      "www.semanticscholar.org",
+      "openalex.org",
+      "europepmc.org",
+      "www.researchgate.net",
+    ].includes(location.hostname);
+  }
+
+  function genericResultItemSelector(options = {}) {
+    const selectors = [
+      "td.item-data",
+      ".result-list-item",
+      ".search-result",
+      ".search-results-item",
+      ".search-result-item",
+      ".result-item",
+      ".article-result",
+      "[data-test='result-item']",
+      "[data-testid='result-item']",
+      "[data-test-id='result-item']",
+      "[data-test-id='paper-row']",
+      ".paper",
+      ".paper-card",
+      ".cl-paper-row",
+    ];
+    if (options.loose) selectors.push(".result", ".item");
+    return selectors.join(",");
+  }
+
+  function genericResultItems() {
+    const nodes = [...document.querySelectorAll(genericResultItemSelector({ loose: true }))];
+    return nodes.filter((node) => !nodes.some((other) => other !== node && other.contains(node)));
+  }
+
+  function genericResultListAnchor() {
+    if (!isGenericResultListHost()) return null;
+    if (location.hostname === "search.crossref.org") {
+      return document.querySelector("td.item-data")?.closest("table") || null;
+    }
+    const first = document.querySelector(genericResultItemSelector());
+    if (!first) return null;
+    return first.closest("[data-test='search-results'], [data-testid='search-results'], [data-test-id='search-results'], .search-results, .results, .result-list, .results-list, .paper-list, .article-list, main, #main-content") || first;
+  }
+
   function resultListRoot() {
     if (location.hostname === "scholar.google.com") return document.querySelector("#gs_res_ccl_mid") || document.querySelector("#gs_res_ccl") || document.body;
     if (location.hostname === "pubmed.ncbi.nlm.nih.gov") return document.querySelector(".search-results-chunks") || document.querySelector("main") || document.body;
+    if (isGenericResultListHost()) return genericResultListAnchor() || document.querySelector("main") || document.body;
     return document.querySelector("main") || document.body;
   }
 
@@ -1266,7 +1313,19 @@
         return;
       }
     }
-    getFilterbarMount().insertAdjacentElement("afterend", bar);
+    if (isGenericResultListHost()) {
+      const anchor = genericResultListAnchor();
+      if (anchor) {
+        anchor.insertAdjacentElement("beforebegin", bar);
+        return;
+      }
+    }
+    const mount = getFilterbarMount();
+    if (mount === document.body || !mount.parentElement) {
+      document.body.prepend(bar);
+    } else {
+      mount.insertAdjacentElement("afterend", bar);
+    }
   }
 
   function alignPubmedFilterbar(bar) {
@@ -1300,6 +1359,7 @@
       alignPubmedFilterbar(existing);
       return;
     }
+    if (isGenericResultListHost() && !genericResultListAnchor()) return;
     const bar = document.createElement("div");
     bar.id = "pjm-filterbar";
     const classNames = ["pjm-filterbar"];
@@ -1383,7 +1443,7 @@
   }
 
   function resultItemForMetrics(metrics) {
-    return metrics.closest(".gs_r.gs_or, article.full-docsum, .docsum-content, .result-list-item, .search-result, .search-results-item, .paper, .cl-paper-row, .result, .item") || metrics.parentElement;
+    return metrics.closest(`.gs_r.gs_or, article.full-docsum, .docsum-content, ${genericResultItemSelector({ loose: true })}`) || metrics.parentElement;
   }
 
   function applyFilters() {
@@ -1416,6 +1476,8 @@
       const title = firstText(
         item?.querySelector?.(".gs_rt")?.textContent,
         item?.querySelector?.(".docsum-title")?.textContent,
+        item?.querySelector?.(".lead")?.textContent,
+        item?.querySelector?.(".title, .paper-title, .cl-paper-title, [data-test='title'], [data-test-id='title']")?.textContent,
         item?.querySelector?.("h1, h2, h3")?.textContent,
         document.querySelector("h1")?.textContent
       ).replace(/^(?:\[[^\]]+\]\s*)+/, "").trim();
@@ -1537,32 +1599,21 @@
   }
 
   function processGenericResultLists() {
-    const listHosts = [
-      "search.crossref.org",
-      "www.semanticscholar.org",
-      "openalex.org",
-      "europepmc.org",
-      "www.researchgate.net",
-    ];
-    if (!listHosts.includes(location.hostname)) return;
+    if (!isGenericResultListHost()) return;
 
-    const selectors = [
-      ".result-list-item",
-      ".search-result",
-      ".search-results-item",
-      ".paper",
-      ".cl-paper-row",
-      ".result",
-      ".item",
-    ];
-    const items = document.querySelectorAll(selectors.join(","));
+    const items = genericResultItems();
     for (const item of items) {
       if (item.dataset.pjmProcessed === "1") continue;
       const doi = getArticleDoi(item);
       const journal = firstText(
+        crossrefResultJournal(item),
         item.querySelector("[data-test='journal-title']")?.textContent,
+        item.querySelector("[data-testid='journal-title']")?.textContent,
         item.querySelector(".journal-title")?.textContent,
+        item.querySelector(".journalTitle")?.textContent,
         item.querySelector(".publication-title")?.textContent,
+        item.querySelector(".source-title")?.textContent,
+        item.querySelector(".source")?.textContent,
         item.querySelector(".venue")?.textContent,
         item.querySelector(".journal")?.textContent
       );
@@ -1573,12 +1624,22 @@
     }
   }
 
+  function crossrefResultJournal(item) {
+    if (location.hostname !== "search.crossref.org") return "";
+    for (const span of item.querySelectorAll("p.extra span")) {
+      const text = (span.textContent || "").replace(/\s+/g, " ").trim();
+      if (!/^in\b/i.test(text)) continue;
+      return firstText(span.querySelector("b")?.textContent, text.replace(/^in\s+/i, ""));
+    }
+    return "";
+  }
+
   function isResultListPage() {
     if (location.hostname === "scholar.google.com") return true;
     if (location.hostname === "www.semanticscholar.org" && location.pathname.startsWith("/search")) return true;
-    if (location.hostname === "search.crossref.org") return true;
+    if (location.hostname === "search.crossref.org" && location.pathname.startsWith("/search/works")) return true;
     if (location.hostname === "europepmc.org" && location.pathname.startsWith("/search")) return true;
-    if (location.hostname === "openalex.org" && !location.pathname.startsWith("/works/")) return true;
+    if (location.hostname === "openalex.org" && location.pathname.startsWith("/search")) return true;
     if (location.hostname === "pubmed.ncbi.nlm.nih.gov" && document.querySelector("article.full-docsum, .docsum-content")) return true;
     return false;
   }
