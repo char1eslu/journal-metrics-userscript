@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.7
+// @version      0.3.8
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -1808,18 +1808,33 @@
     if (location.hostname === "pubmed.ncbi.nlm.nih.gov") return;
     if (isResultListPage()) return;
     if (document.querySelector("article.full-docsum, .docsum-content")) return;
-    if (document.body.dataset.pjmGenericProcessed === "1") return;
 
     const query = getGenericArticleQuery();
     const record = lookupJournal(query) || findJournalInText(document.body?.textContent || "");
     const scihubTarget = getScihubTarget(document);
+    const panel = document.querySelector(".pjm-panel");
+    const existingMetrics = panel?.querySelector(`.${BADGE_CLASS}`);
+
+    if (document.body.dataset.pjmGenericProcessed === "1") {
+      if (existingMetrics && scihubTarget && existingMetrics.dataset.pjmTarget !== scihubTarget) {
+        let previousRecord = null;
+        try {
+          previousRecord = JSON.parse(existingMetrics.dataset.pjmRecord || "null");
+        } catch {
+          previousRecord = null;
+        }
+        updateMetrics(existingMetrics, record || previousRecord, { showSource: true, scihubTarget, root: panel || document });
+      }
+      return;
+    }
+
     if (!record && !scihubTarget) return;
 
     document.body.dataset.pjmGenericProcessed = "1";
-    const panel = document.createElement("div");
-    panel.className = "pjm-panel";
-    findGenericInsertTarget().insertAdjacentElement("afterend", panel);
-    insertMetrics(panel, record, { showSource: true, scihubTarget });
+    const nextPanel = panel || document.createElement("div");
+    nextPanel.className = "pjm-panel";
+    if (!panel) findGenericInsertTarget().insertAdjacentElement("afterend", nextPanel);
+    insertMetrics(nextPanel, record, { showSource: true, scihubTarget });
   }
 
   function processPage() {
