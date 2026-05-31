@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.28
+// @version      0.3.29
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @license      MIT
@@ -253,6 +253,18 @@
     return record?.top === true || String(record?.top).toLowerCase() === "true" || record?.top === "是";
   }
 
+  function isReview(record) {
+    return record?.review === true || String(record?.review).toLowerCase() === "true" || record?.review === "是";
+  }
+
+  function casLabel(record) {
+    return record?.cas ? `${record.cas}区` : "";
+  }
+
+  function settingEnabled(key) {
+    return STATE.settings?.[key] !== false;
+  }
+
   function isVisibleNode(node) {
     if (!node) return false;
     const style = window.getComputedStyle(node);
@@ -271,8 +283,8 @@
     if (record.jcr || record.jcrQuartile) details.push(`JCR: ${record.jcr || record.jcrQuartile}`);
     if (record.cas) details.push(`CAS: ${record.cas}区`);
     if (record.casCategory) details.push(`CAS category: ${record.casCategory}`);
-    if (record.top === true || String(record.top).toLowerCase() === "true" || record.top === "是") details.push("Top journal");
-    if (record.review === true || String(record.review).toLowerCase() === "true" || record.review === "是") details.push("Review journal");
+    if (isTop(record)) details.push("Top journal");
+    if (isReview(record)) details.push("Review journal");
     if (record.warning) details.push(`Warning: ${record.warning}`);
     if (updated) details.push(`Data: ${updated}`);
     return details.join("\n");
@@ -488,16 +500,16 @@
     return normalizeDoi(target).toLowerCase();
   }
 
-  function getUnpaywallCache() {
+  function readJsonObject(key) {
     try {
-      return JSON.parse(GM_getValue(CONFIG.unpaywallCacheKey, "{}")) || {};
+      return JSON.parse(GM_getValue(key, "{}")) || {};
     } catch {
       return {};
     }
   }
 
-  function setUnpaywallCache(cache) {
-    GM_setValue(CONFIG.unpaywallCacheKey, JSON.stringify(cache));
+  function writeJsonObject(key, value) {
+    GM_setValue(key, JSON.stringify(value));
   }
 
   async function fetchUnpaywall(target) {
@@ -505,7 +517,7 @@
     const key = unpaywallCacheKey(doi);
     if (!doi || !key) return null;
 
-    const cache = getUnpaywallCache();
+    const cache = readJsonObject(CONFIG.unpaywallCacheKey);
     const cached = cache[key];
     if (cached && Date.now() - cached.time < CONFIG.unpaywallCacheMs) return cached;
 
@@ -526,7 +538,7 @@
       time: Date.now(),
     };
     cache[key] = result;
-    setUnpaywallCache(cache);
+    writeJsonObject(CONFIG.unpaywallCacheKey, cache);
     return result;
   }
 
@@ -553,42 +565,6 @@
     return details.length ? `${title}; ${details.join("; ")}` : title;
   }
 
-  function getCitationCache() {
-    try {
-      return JSON.parse(GM_getValue(CONFIG.citationsCacheKey, "{}")) || {};
-    } catch {
-      return {};
-    }
-  }
-
-  function setCitationCache(cache) {
-    GM_setValue(CONFIG.citationsCacheKey, JSON.stringify(cache));
-  }
-
-  function getRiskCache() {
-    try {
-      return JSON.parse(GM_getValue(CONFIG.riskCacheKey, "{}")) || {};
-    } catch {
-      return {};
-    }
-  }
-
-  function setRiskCache(cache) {
-    GM_setValue(CONFIG.riskCacheKey, JSON.stringify(cache));
-  }
-
-  function getCrossrefCache() {
-    try {
-      return JSON.parse(GM_getValue(CONFIG.crossrefCacheKey, "{}")) || {};
-    } catch {
-      return {};
-    }
-  }
-
-  function setCrossrefCache(cache) {
-    GM_setValue(CONFIG.crossrefCacheKey, JSON.stringify(cache));
-  }
-
   function normalizePubmedStatus(summary) {
     const pubTypes = (summary?.pubtype || []).map((item) => String(item || ""));
     const references = summary?.references || [];
@@ -608,7 +584,7 @@
   async function fetchPubmedRisk(target) {
     const pmid = normalizePmid(target);
     if (!pmid) return null;
-    const cache = getRiskCache();
+    const cache = readJsonObject(CONFIG.riskCacheKey);
     const cached = cache[pmid];
     if (cached && Date.now() - cached.time < CONFIG.riskCacheMs) return cached;
 
@@ -623,7 +599,7 @@
       time: Date.now(),
     };
     cache[pmid] = result;
-    setRiskCache(cache);
+    writeJsonObject(CONFIG.riskCacheKey, cache);
     return result;
   }
 
@@ -695,7 +671,7 @@
     const cleanTitle = String(title || "").replace(/\s+/g, " ").trim();
     if (!cleanTitle) return null;
     const key = `title:${normalizeKey(cleanTitle).toLowerCase()}`;
-    const cache = getCrossrefCache();
+    const cache = readJsonObject(CONFIG.crossrefCacheKey);
     const cached = cache[key];
     if (cached && Date.now() - cached.time < CONFIG.crossrefCacheMs) return cached;
 
@@ -709,7 +685,7 @@
       .sort((left, right) => right.score - left.score);
     const result = candidates[0]?.info || null;
     cache[key] = result || { time: Date.now() };
-    setCrossrefCache(cache);
+    writeJsonObject(CONFIG.crossrefCacheKey, cache);
     return result;
   }
 
@@ -717,7 +693,7 @@
     const doi = normalizeDoi(target);
     if (!doi) return null;
     const key = `doi:${doi.toLowerCase()}`;
-    const cache = getCrossrefCache();
+    const cache = readJsonObject(CONFIG.crossrefCacheKey);
     const cached = cache[key];
     if (cached && Date.now() - cached.time < CONFIG.crossrefCacheMs) return cached;
 
@@ -725,7 +701,7 @@
     const data = await loadJsonViaGm(url);
     const result = data?.message ? getCrossrefSourceInfo(data.message) : null;
     cache[key] = result || { time: Date.now() };
-    setCrossrefCache(cache);
+    writeJsonObject(CONFIG.crossrefCacheKey, cache);
     return result;
   }
 
@@ -812,7 +788,7 @@
     const key = citationCacheKey(target);
     if (!key) return null;
 
-    const cache = getCitationCache();
+    const cache = readJsonObject(CONFIG.citationsCacheKey);
     const cached = cache[key];
     if (cached && Date.now() - cached.time < CONFIG.citationsCacheMs) return cached;
 
@@ -830,7 +806,7 @@
             time: Date.now(),
           };
           cache[key] = result;
-          setCitationCache(cache);
+          writeJsonObject(CONFIG.citationsCacheKey, cache);
           return result;
         }
       } catch {
@@ -846,7 +822,7 @@
         if (Number.isFinite(work?.cited_by_count)) {
           const result = { count: work.cited_by_count, source: "OpenAlex", time: Date.now() };
           cache[key] = result;
-          setCitationCache(cache);
+          writeJsonObject(CONFIG.citationsCacheKey, cache);
           return result;
         }
       } catch {
@@ -861,7 +837,7 @@
         if (Number.isFinite(data?.citationCount)) {
           const result = { count: data.citationCount, source: "Semantic Scholar", time: Date.now() };
           cache[key] = result;
-          setCitationCache(cache);
+          writeJsonObject(CONFIG.citationsCacheKey, cache);
           return result;
         }
       } catch {
@@ -871,7 +847,7 @@
 
     const result = { count: null, source: "", time: Date.now() };
     cache[key] = result;
-    setCitationCache(cache);
+    writeJsonObject(CONFIG.citationsCacheKey, cache);
     return result;
   }
 
@@ -1056,11 +1032,7 @@
   }
 
   function loadManualAliases() {
-    try {
-      return JSON.parse(GM_getValue(CONFIG.manualAliasesKey, "{}")) || {};
-    } catch {
-      return {};
-    }
+    return readJsonObject(CONFIG.manualAliasesKey);
   }
 
   function saveManualAliases(aliases) {
@@ -1132,6 +1104,25 @@
         font-weight: 700;
         cursor: pointer;
         text-decoration: none;
+        transition: background 0.12s ease, border-color 0.12s ease;
+      }
+      #pjm-more-popover button:hover,
+      .pjm-floating-bar a:hover,
+      .pjm-floating-bar button:hover,
+      .pjm-settings-head button:hover,
+      .pjm-settings-actions button:hover,
+      .pjm-detail-head button:hover {
+        border-color: #94a3b8;
+        background: #f8fafc;
+      }
+      #pjm-more-popover button:focus-visible,
+      .pjm-floating-bar a:focus-visible,
+      .pjm-floating-bar button:focus-visible,
+      .pjm-settings-head button:focus-visible,
+      .pjm-settings-actions button:focus-visible,
+      .pjm-detail-head button:focus-visible {
+        outline: 2px solid #2563eb;
+        outline-offset: 1px;
       }
       #pjm-more-popover button {
         width: 100%;
@@ -1495,10 +1486,10 @@
       ["ISSN", asArray(record?.issn).join(", ")],
       ["IF", record?.if || record?.impactFactor || record?.IF || ""],
       ["JCR", record?.jcr || record?.jcrQuartile || ""],
-      ["CAS", record?.cas ? `${record.cas}区` : ""],
+      ["CAS", casLabel(record)],
       ["Category", record?.casCategory || ""],
       ["Top", isTop(record) ? "Yes" : ""],
-      ["Review", record?.review === true || String(record?.review).toLowerCase() === "true" || record?.review === "是" ? "Yes" : ""],
+      ["Review", isReview(record) ? "Yes" : ""],
       ["Warning", record?.warning || ""],
       ["Data", updated],
       ["Match", matchDescription(match)],
@@ -2080,6 +2071,17 @@
       button.pjm-chip {
         appearance: none !important;
         cursor: pointer;
+        transition: filter 0.12s ease !important;
+      }
+      button.pjm-chip:hover {
+        filter: brightness(0.96);
+      }
+      a.pjm-chip {
+        transition: filter 0.12s ease, background 0.12s ease, color 0.12s ease !important;
+      }
+      .pjm-chip:focus-visible {
+        outline: 2px solid #2563eb !important;
+        outline-offset: 1px !important;
       }
       .pjm-hidden-by-setting {
         display: none !important;
@@ -2172,6 +2174,10 @@
       .pjm-unpaywall:hover {
         background: #ffedd5 !important;
         color: #7c2d12 !important;
+      }
+      a.pjm-pubpeer:hover,
+      a.pjm-risk:hover {
+        filter: brightness(0.97);
       }
       .pjm-panel {
         margin: 12px 0;
@@ -2281,7 +2287,7 @@
   function renderMetrics(record, options = {}) {
     const parts = [];
     if (record) {
-      const casValue = record.cas ? `${record.cas}区` : "";
+      const casValue = casLabel(record);
       parts.push(
         metricChip("IF", record.if || record.impactFactor || record.IF, "", record, options.match),
         metricChip("JCR", record.jcr || record.jcrQuartile, quartileClass(record.jcr || record.jcrQuartile), record, options.match),
@@ -2289,10 +2295,10 @@
       );
 
       if (record.casCategory) parts.push(metricChip("大类", record.casCategory, "", record, options.match));
-      if (record.top === true || String(record.top).toLowerCase() === "true" || record.top === "是") {
+      if (isTop(record)) {
         parts.push(metricChip("", "Top", "pjm-top", record, options.match));
       }
-      if (record.review === true || String(record.review).toLowerCase() === "true" || record.review === "是") {
+      if (isReview(record)) {
         parts.push(metricChip("", "Review", "", record, options.match));
       }
       if (record.warning) {
@@ -2303,20 +2309,20 @@
       parts.push(fixJournalChip(options.fixQuery, options.resolvedBy));
     }
     const citationTarget = options.citationTarget || options.scihubTarget;
-    if (STATE.settings?.showCited !== false && (citationTarget || options.citationResult)) {
+    if (settingEnabled("showCited") && (citationTarget || options.citationResult)) {
       parts.push(citedChip(citationTarget, options.citationResult));
     }
-    if (STATE.settings?.showRisk !== false && (citationTarget || options.citationResult)) {
+    if (settingEnabled("showRisk") && (citationTarget || options.citationResult)) {
       parts.push(riskChip(citationTarget));
     }
-    if (STATE.settings?.showCrossrefStatus !== false && options.statuses?.length) {
+    if (settingEnabled("showCrossrefStatus") && options.statuses?.length) {
       parts.push(statusChip(options.statuses, options.statusSource));
     }
     if (options.scihubTarget) {
-      if (STATE.settings?.showCrossrefStatus !== false && !options.statuses?.length) parts.push(crossrefStatusChip(options.scihubTarget));
-      if (STATE.settings?.showOa !== false) parts.push(unpaywallChip(options.scihubTarget));
-      if (STATE.settings?.showScihub !== false) parts.push(scihubChip(options.scihubTarget));
-      if (STATE.settings?.showPubpeer !== false) parts.push(pubpeerChip(options.scihubTarget));
+      if (settingEnabled("showCrossrefStatus") && !options.statuses?.length) parts.push(crossrefStatusChip(options.scihubTarget));
+      if (settingEnabled("showOa")) parts.push(unpaywallChip(options.scihubTarget));
+      if (settingEnabled("showScihub")) parts.push(scihubChip(options.scihubTarget));
+      if (settingEnabled("showPubpeer")) parts.push(pubpeerChip(options.scihubTarget));
     }
 
     const source = options.showSource && STATE.data?.meta?.updated
@@ -3290,7 +3296,7 @@
   }
 
   function ensureFloatingArticleBar() {
-    if (isResultListPage() || STATE.settings?.showArticleFloatingBar === false) {
+    if (isResultListPage() || !settingEnabled("showArticleFloatingBar")) {
       removeUiNode("pjm-floating-bar");
       return;
     }
@@ -3308,10 +3314,10 @@
     const oaUrl = doi ? buildUnpaywallUrl(doi) : "";
     const sciUrl = buildScihubUrl(target);
     const peerUrl = pubpeerUrl(target);
-    if (STATE.settings?.showOa !== false && oaUrl) links.push(`<a href="${escapeHtml(oaUrl)}" target="_blank" rel="noopener noreferrer" title="Open via Unpaywall">OA</a>`);
-    if (STATE.settings?.showScihub !== false && sciUrl) links.push(`<a href="${escapeHtml(sciUrl)}" target="_blank" rel="noopener noreferrer" title="Open via Sci-Hub">Sci-Hub</a>`);
+    if (settingEnabled("showOa") && oaUrl) links.push(`<a href="${escapeHtml(oaUrl)}" target="_blank" rel="noopener noreferrer" title="Open via Unpaywall">OA</a>`);
+    if (settingEnabled("showScihub") && sciUrl) links.push(`<a href="${escapeHtml(sciUrl)}" target="_blank" rel="noopener noreferrer" title="Open via Sci-Hub">Sci-Hub</a>`);
     links.push('<button type="button" data-pjm-floating-cite="1" title="Copy citation">Cite</button>');
-    if (STATE.settings?.showPubpeer !== false && peerUrl) links.push(`<a href="${escapeHtml(peerUrl)}" target="_blank" rel="noopener noreferrer" title="Search PubPeer">PubPeer</a>`);
+    if (settingEnabled("showPubpeer") && peerUrl) links.push(`<a href="${escapeHtml(peerUrl)}" target="_blank" rel="noopener noreferrer" title="Search PubPeer">PubPeer</a>`);
     bar.innerHTML = links.join("");
     bar.onclick = (event) => {
       if (!event.target.closest("[data-pjm-floating-cite]")) return;
