@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.1
+// @version      0.3.2
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -1218,31 +1218,60 @@
       const list = document.querySelector(".search-results-chunks");
       if (list) {
         list.insertAdjacentElement("beforebegin", bar);
+        alignPubmedFilterbar(bar);
         return;
       }
     }
     getFilterbarMount().insertAdjacentElement("afterend", bar);
   }
 
+  function alignPubmedFilterbar(bar) {
+    if (location.hostname !== "pubmed.ncbi.nlm.nih.gov" || !bar) return;
+    const anchor =
+      document.querySelector(".search-results-chunks article.full-docsum .docsum-content") ||
+      document.querySelector(".search-results-chunks .docsum-content") ||
+      document.querySelector(".search-results-chunks article.full-docsum");
+    const parent = bar.parentElement;
+    if (!anchor || !parent) return;
+
+    const parentRect = parent.getBoundingClientRect();
+    const anchorRect = anchor.getBoundingClientRect();
+    const targetWidth = Math.round(anchorRect.width);
+    if (!parentRect.width || !targetWidth || targetWidth < 320) {
+      bar.style.marginLeft = "";
+      bar.style.width = "";
+      return;
+    }
+
+    const left = Math.max(0, Math.round(anchorRect.left - parentRect.left));
+    const right = Math.max(0, Math.round(parentRect.right - anchorRect.right));
+    bar.style.marginLeft = `${left}px`;
+    bar.style.width = `calc(100% - ${left + right}px)`;
+  }
+
   function ensureFilterbar() {
     if (!isResultListPage()) return;
-    if (document.getElementById("pjm-filterbar")) return;
+    const existing = document.getElementById("pjm-filterbar");
+    if (existing) {
+      alignPubmedFilterbar(existing);
+      return;
+    }
     const bar = document.createElement("div");
     bar.id = "pjm-filterbar";
     bar.className = `pjm-filterbar${location.hostname === "pubmed.ncbi.nlm.nih.gov" ? " pjm-filterbar-pubmed" : ""}`;
     bar.innerHTML = `
       <span class="pjm-filterbar-group">
-        <button type="button" data-pjm-filter="q1">Q1</button>
-        <button type="button" data-pjm-filter="cas1">CAS 1区</button>
-        <button type="button" data-pjm-filter="top">Top</button>
-        <button type="button" data-pjm-filter="hideNonMatching">Hide</button>
-        <label>IF >= <input type="number" step="0.1" min="0" data-pjm-filter="minIf"></label>
+        <button type="button" data-pjm-filter="q1" title="Highlight JCR Q1 journals">Q1</button>
+        <button type="button" data-pjm-filter="cas1" title="Highlight CAS zone 1 journals">CAS 1区</button>
+        <button type="button" data-pjm-filter="top" title="Highlight Top journals">Top</button>
+        <button type="button" data-pjm-filter="hideNonMatching" title="Hide results that do not match active filters">Hide</button>
+        <label title="Set the minimum impact factor">IF >= <input type="number" step="0.1" min="0" data-pjm-filter="minIf" title="Minimum impact factor"></label>
       </span>
       <span class="pjm-filterbar-spacer" aria-hidden="true"></span>
       <span class="pjm-filterbar-group">
-        <button type="button" data-pjm-action="export-ris">RIS</button>
-        <button type="button" data-pjm-action="export-bibtex">BibTeX</button>
-        <button type="button" data-pjm-action="reset">Reset</button>
+        <button type="button" data-pjm-action="export-ris" title="Copy page records as RIS">RIS</button>
+        <button type="button" data-pjm-action="export-bibtex" title="Copy page records as BibTeX">BibTeX</button>
+        <button type="button" data-pjm-action="reset" title="Clear all filters">Reset</button>
       </span>
     `;
     bar.addEventListener("click", (event) => {
@@ -1624,6 +1653,12 @@
       observePageChanges.timer = window.setTimeout(processPage, 150);
     });
     observer.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener("resize", () => {
+      window.clearTimeout(observePageChanges.resizeTimer);
+      observePageChanges.resizeTimer = window.setTimeout(() => {
+        alignPubmedFilterbar(document.getElementById("pjm-filterbar"));
+      }, 120);
+    });
   }
 
   async function main() {
