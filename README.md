@@ -1,15 +1,6 @@
 # Journal Metrics Userscript
 
-Tampermonkey userscript for common academic and journal sites. It displays journal impact factor, JCR quartile, CAS partition, citation count, Top, Review and warning tags, then appends compact OA/PDF, Sci-Hub and export/filter tools.
-
-## Files
-
-- `journal-metrics.user.js`: install this in Tampermonkey.
-- `journal-data.sample.json`: small sample data for local testing and schema reference.
-- `scihub-domains.json`: ordered Sci-Hub candidate domain list loaded by the userscript.
-- `scripts/build-data-from-showjcr.py`: converts ShowJCR CSV files into the JSON consumed by the userscript.
-- `scripts/embed-data.py`: creates a full offline `.user.js` by embedding `journal-data.json`.
-- `scripts/update-scihub-domains.py`: discovers Sci-Hub candidates from configured sources and keeps reachable domains first.
+Tampermonkey userscript for PubMed, Google Scholar and common academic journal pages. It adds compact journal metrics, citation counts, OA/PDF status, Sci-Hub, PubPeer, filtering and export tools directly inside literature search results and article pages.
 
 ## Install
 
@@ -21,113 +12,121 @@ Lightweight install, with journal data loaded from `journal-data.json`:
 
 <https://raw.githubusercontent.com/char1eslu/journal-metrics-userscript/main/journal-metrics.user.js>
 
-Open either link in the browser, then let Tampermonkey install it. After installation, open a supported academic page such as PubMed, Nature, ScienceDirect or a journal DOI page.
+Open either link in the browser and let Tampermonkey install the script. Tampermonkey detects updates through the userscript `@version` field.
 
-The script includes a tiny built-in sample dataset, so several common journals will render immediately. For real use, use either the offline build or a hosted JSON file.
+## What It Shows
+
+The metrics row is intentionally compact. It can show:
+
+- `IF`: journal impact factor from the local journal data file.
+- `JCR Q1-Q4`: JCR quartile.
+- `CAS 1区-4区`: Chinese Academy of Sciences journal partition.
+- `大类`: CAS broad subject category.
+- `Top`: CAS top-journal flag.
+- `Review`: journal review flag when present in the data.
+- `预警`: warning tag when present in the data.
+- `Cited <count>`: citation count. Hover the chip to see the source.
+- `PDF`, `Repository`, `OA`, `No OA` or `Unknown`: OA status from Unpaywall.
+- `Sci-Hub`: DOI/PMID entry through the configured Sci-Hub domain.
+- `PubPeer`: PubPeer search link for DOI/PMID-backed articles.
+- `Correction`, `Retraction`, `Update`: Crossref update/retraction relation signals.
+- PubMed risk status when NCBI reports retraction-related publication metadata.
+
+Click an IF/JCR/CAS chip to open a journal-detail popup with the matched journal, ISSN, data date and match route. Low-confidence page-text matches also show a `Check` chip.
 
 ## Supported Sites
 
-The script has dedicated PubMed and Google Scholar result handling, plus generic metadata handling for many journal pages. Current match rules include PubMed/PMC, Europe PMC, Google Scholar, DOI.org, Crossref Search, Semantic Scholar, OpenAlex, Web of Science, Scopus, Dimensions, Lens, PubPeer, Connected Papers, ResearchRabbit, Litmaps, Nature, Science, Springer/SpringerOpen/BMC, ScienceDirect, Cell, The Lancet, JAMA Network, Oxford Academic, Wiley, ACM, IEEE Xplore, ACS, RSC, AIP, Taylor & Francis, SAGE, PLOS, BMJ, Frontiers, MDPI, bioRxiv, medRxiv, NEJM, AHA Journals, JCI, PNAS, APS, eLife, PeerJ, IOPscience, Royal Society, ASM, APS Physiology, Karger, Cambridge Core, De Gruyter/De Gruyter Brill, Emerald, World Scientific, Annual Reviews, University of Chicago Press, J-STAGE, LWW abstract/fulltext pages, Cochrane Library, Hindawi, Mary Ann Liebert, ATS Journals, Future Medicine, Thieme, ResearchGate, arXiv, SSRN and Preprints.org.
+The script has dedicated handlers for:
 
-Generic journal pages are matched through standard `citation_*`, `prism.*`, Dublin Core, JSON-LD DOI/ISSN and journal-title metadata. If a page exposes DOI but no journal metadata, only the `Cited`, Unpaywall and Sci-Hub entries may appear.
+- PubMed search results and article pages
+- PMC articles
+- Google Scholar result pages
+- Crossref Search-style result pages
+- Generic DOI/article pages that expose standard metadata
 
-## Result Tools
+The generic article-page matcher reads standard metadata such as `citation_*`, `prism.*`, Dublin Core, JSON-LD DOI/ISSN fields, DOI links and visible DOI text. It has been tuned for many publisher and literature-discovery sites, including Europe PMC, DOI.org, Semantic Scholar, OpenAlex, Web of Science, Scopus, Dimensions, Lens, PubPeer, Connected Papers, ResearchRabbit, Litmaps, Nature, Science, Springer/SpringerOpen/BMC, ScienceDirect, Cell, The Lancet, JAMA Network, Oxford Academic, Wiley, ACM, IEEE Xplore, ACS, RSC, AIP, Taylor & Francis, SAGE, PLOS, BMJ, Frontiers, MDPI, bioRxiv, medRxiv, NEJM, AHA Journals, JCI, PNAS, APS, eLife, PeerJ, IOPscience, Royal Society, ASM, APS Physiology, Karger, Cambridge Core, De Gruyter/De Gruyter Brill, Emerald, World Scientific, Annual Reviews, University of Chicago Press, J-STAGE, LWW, Cochrane Library, Hindawi, Mary Ann Liebert, ATS Journals, Future Medicine, Thieme, ResearchGate, arXiv, SSRN and Preprints.org.
 
-On supported result pages, the toolbar can highlight or hide records by:
+If a page exposes a DOI but no journal metadata, the row may only show citation, OA/PDF and Sci-Hub entries. When a title is available, the script can try Crossref/OpenAlex title resolution and fill journal metrics only when the title match is high-confidence.
 
-- JCR Q1
-- CAS 1区
-- Top journal
-- Minimum impact factor
+## Result-Page Tools
 
-The same toolbar can export detected page items as RIS or BibTeX. DOI-backed exports try citation content negotiation first and fall back to locally generated RIS or BibTeX when needed.
+On search result pages, the toolbar can:
 
-Extra result-page tools are grouped under `More` to keep the toolbar compact:
+- highlight or hide non-matching records
+- filter by JCR Q1
+- filter by CAS 1区
+- filter by Top journal
+- filter by minimum impact factor
+- export visible or filtered results as RIS/BibTeX
+- copy DOI, PMID, CSV, Markdown table or compact citation text
+- export selected records as RIS, BibTeX, CSV or Markdown
 
-- `DOI`: copy visible DOI values.
-- `Cite`: copy compact citation text.
-- `Abs`: show or hide PubMed snippets/abstracts when PubMed has rendered them.
-- `Selected RIS/BibTeX/CSV/Markdown`: export selected records. PubMed uses its native result checkboxes; Google Scholar gets a small checkbox per result.
+PubMed uses its native result checkboxes for selected exports. Google Scholar gets a small checkbox added to each result.
 
-The Tampermonkey menu also includes filtered RIS/BibTeX export, DOI/PMID lists, CSV and Markdown table export.
+Extra commands are grouped under `More` where possible to keep the main toolbar small. Floating UI surfaces such as `More`, settings, journal-detail popups and the article-page shortcut bar are rendered inside a Shadow DOM container to reduce interference from publisher CSS.
 
-`Journal Metrics: Settings` opens a compact settings panel for toggling citation counts, OA, Sci-Hub, PubPeer, Crossref status chips, PubMed risk chips, PubMed abstracts and the article-page floating bar. The same panel can clear journal data, citation, OA and Crossref caches.
+## Settings
 
-Floating UI surfaces such as `More`, `Settings`, journal-detail popups and the article-page shortcut bar are rendered inside an isolated Shadow DOM container to avoid publisher CSS overriding script controls.
+Use `Journal Metrics: Settings` from the Tampermonkey menu or the toolbar `Settings` button. The settings panel can toggle:
 
-## Citation Count
+- citation counts
+- OA/PDF status
+- Sci-Hub button
+- PubPeer button
+- Crossref status chips
+- PubMed risk status
+- article-page floating bar
+- PubMed abstracts/snippets
 
-The citation chip always displays as `Cited <count>` to keep the metrics row compact. Hover over the chip to see the source:
+The same panel can refresh journal/Sci-Hub data and clear citation, OA, Crossref and risk caches.
+
+## Citation Counts
+
+The citation chip always displays as `Cited <count>`. Hover the chip to see the source:
 
 1. Google Scholar visible citation count on Google Scholar result pages.
-2. NIH iCite, used first when a PMID is available, especially on PubMed.
-3. OpenAlex, using DOI or PMID.
-4. Semantic Scholar, as a fallback.
+2. NIH iCite when a PMID is available, especially on PubMed.
+3. OpenAlex by DOI or PMID.
+4. Semantic Scholar by DOI or PMID as a fallback.
 
-Google Scholar still has no stable official public API for this use case, so the script only reads the citation count that Google Scholar has already rendered on the current result card. On other sites, citation counts may differ because each source has different coverage and deduplication.
+Google Scholar has no stable official public API for this use case. This script only reads the citation count already rendered on the current Google Scholar result card. Citation counts can differ across Google Scholar, NIH iCite, OpenAlex and Semantic Scholar because coverage, deduplication and update schedules differ.
 
-## Integrity Signals
+## OA / PDF
 
-PubMed-backed items are checked against NCBI ESummary for publication-status warnings. A red status chip appears only when PubMed reports a retraction, retraction notice, or expression of concern. DOI-backed items also get a compact PubPeer search entry.
+When a DOI is available, the script checks Unpaywall and changes the OA chip to:
 
-Crossref update metadata is checked for DOI-backed items and can surface `Correction`, `Retraction`, or `Update` chips when Crossref reports a relation. When a result has a title but no DOI, the script can resolve the DOI through Crossref only when the returned title is a high-confidence match.
+- `PDF`: a direct OA PDF URL is available.
+- `Repository`: the best OA location is a repository copy.
+- `OA`: an OA landing page is available.
+- `No OA`: Unpaywall returned a valid response but did not find an OA copy.
+- `Unknown`: lookup failed or timed out.
 
-Journal metric hover text includes the matching route, such as ISSN, journal title, abbreviation, or low-confidence page-text matching. Click an IF/JCR/CAS chip to open a copyable journal-detail popup. Low-confidence page-text matches also show a `Check` chip.
-
-Article pages can show a small floating bar with OA, Sci-Hub, Cite and PubPeer shortcuts when the corresponding settings are enabled.
-
-## Sci-Hub Domains
-
-The userscript loads `scihub-domains.json` weekly and opens the first configured domain with the page DOI or PMID. A GitHub Actions workflow discovers fresh candidates every Monday, probes that newly discovered set, and keeps reachable domains first. Discovery currently scrapes these candidate sources:
-
-- <https://lovescihub.wordpress.com>
-- <https://sci-hub.shop>
-
-There is no reliable official machine-readable Sci-Hub domain feed. The automated list is rebuilt from the discovery sources each week.
-
-Temporary override: from the Tampermonkey menu, use `Journal Metrics: Set Sci-Hub domains` to set comma- or newline-separated domains for the current browser. Use `Journal Metrics: Clear manual Sci-Hub domains` to return to the remote weekly list.
-
-## Unpaywall
-
-When a DOI is available, the metrics row also includes an Unpaywall-based OA button. It checks the Unpaywall API and changes the chip to `PDF`, `Repository`, `OA`, or `No OA`. `No OA` means Unpaywall returned a valid result but found no OA copy; `Unknown` means the lookup failed or was unavailable. The base fallback URL is:
+The fallback Unpaywall landing URL is:
 
 ```js
 var unpaywallBaseUrl = "https://unpaywall.org/";
 ```
 
-## Build Full Data From ShowJCR
+## Sci-Hub Domains
 
-Clone or download ShowJCR, then run:
+The userscript loads `scihub-domains.json` weekly and opens the first configured domain with the article DOI or PMID. A GitHub Actions workflow runs every Monday and updates the domain order when the discovered candidate set changes.
 
-```bash
-python3 scripts/build-data-from-showjcr.py \
-  --showjcr-dir /path/to/ShowJCR/中科院分区表及JCR原始数据文件 \
-  --pubmed-abb /path/to/EasyPubMed/dist/data/pubmed_abb_data.json \
-  --output journal-data.json
-```
+Current discovery sources:
 
-Upload `journal-data.json` to a GitHub repository or Gist, then set:
+- <https://lovescihub.wordpress.com>
+- <https://sci-hub.shop>
 
-```js
-dataUrl: "https://raw.githubusercontent.com/YOUR_NAME/YOUR_REPO/main/journal-data.json",
-```
+There is no reliable official machine-readable Sci-Hub domain feed. The automated list is therefore best-effort only.
 
-If you use another host, add its domain to the userscript metadata with `@connect`.
+Manual override: from the Tampermonkey menu, use `Journal Metrics: Set Sci-Hub domains` to set comma- or newline-separated domains for the current browser. Use `Journal Metrics: Clear manual Sci-Hub domains` to return to the remote weekly list.
 
-## Build Offline Full Userscript
+Legal note: the script only builds a link from the DOI/PMID to the configured domain. It does not host articles or bypass publisher pages itself. Users are responsible for complying with local law and institutional policy.
 
-After generating `journal-data.json`, run:
+## Data Sources And Local Data
 
-```bash
-python3 scripts/embed-data.py \
-  --script journal-metrics.user.js \
-  --data journal-data.json \
-  --output journal-metrics.full.user.js
-```
+This repository includes a compact journal metric data file for convenience, but the code is designed so you can build and host your own `journal-data.json`.
 
-Install `journal-metrics.full.user.js` in Tampermonkey. This is larger, but it does not need a remote data URL.
-
-## Data Schema
+The data schema supports:
 
 ```json
 {
@@ -151,22 +150,80 @@ Install `journal-metrics.full.user.js` in Tampermonkey. This is larger, but it d
 }
 ```
 
-Matching priority is ISSN first on article pages, then journal title and PubMed abbreviation. Search result pages usually expose only the abbreviated journal citation, so `--pubmed-abb` is strongly recommended.
+Matching priority is ISSN first, then journal title, aliases and PubMed abbreviation. Search-result pages often expose only abbreviated journal citations, so adding PubMed abbreviation aliases is strongly recommended.
 
-## Notes
+## Build Journal Data
 
-- It does not use a custom tracking backend. Public APIs are called directly from the browser.
-- PMID is sent to NIH iCite when available. DOI or PMID is sent to OpenAlex and, if needed, Semantic Scholar to fetch citation counts. On Google Scholar, the article title may be sent to OpenAlex to resolve the journal and DOI.
-- The Sci-Hub button is rendered only inside the metrics row created by this script; it does not add floating buttons or modify other page links.
-- JCR and CAS data licensing can be restrictive. Keep generated data for personal/internal use unless you have the right to redistribute it.
+The helper script can convert ShowJCR CSV files into the JSON consumed by the userscript:
+
+```bash
+python3 scripts/build-data-from-showjcr.py \
+  --showjcr-dir /path/to/ShowJCR/中科院分区表及JCR原始数据文件 \
+  --pubmed-abb /path/to/EasyPubMed/dist/data/pubmed_abb_data.json \
+  --output journal-data.json
+```
+
+Then either host `journal-data.json` yourself and update:
+
+```js
+dataUrl: "https://raw.githubusercontent.com/YOUR_NAME/YOUR_REPO/main/journal-data.json";
+```
+
+or build a full offline userscript:
+
+```bash
+python3 scripts/embed-data.py \
+  --script journal-metrics.user.js \
+  --data journal-data.json \
+  --output journal-metrics.full.user.js
+```
+
+Install `journal-metrics.full.user.js` if you want the data embedded directly in the userscript.
+
+## Files
+
+- `journal-metrics.user.js`: lightweight userscript, loads journal data from `CONFIG.dataUrl`.
+- `journal-metrics.full.user.js`: full userscript with embedded journal data.
+- `journal-data.json`: compact journal metrics data consumed by the script.
+- `journal-data.sample.json`: small sample data for local testing and schema reference.
+- `scihub-domains.json`: ordered Sci-Hub candidate domain list.
+- `scripts/build-data-from-showjcr.py`: converts ShowJCR CSV exports into `journal-data.json`.
+- `scripts/embed-data.py`: embeds `journal-data.json` into the userscript.
+- `scripts/update-scihub-domains.py`: discovers and probes Sci-Hub domains.
+
+## Privacy And Network Requests
+
+The script does not use a custom tracking backend. It runs in the browser and calls public services directly.
+
+Depending on the page and enabled features, it may send:
+
+- DOI to Unpaywall, Crossref, OpenAlex, Semantic Scholar, PubPeer or Sci-Hub.
+- PMID to NIH iCite, NCBI E-Utilities, OpenAlex or Semantic Scholar.
+- Article title to Crossref or OpenAlex when DOI/journal metadata is missing.
+- Sci-Hub candidate domains to the browser when opening Sci-Hub links.
+
+The browser, Tampermonkey and those third-party services may have their own logging and terms.
+
+## License And Third-Party Rights
+
+Original source code and documentation authored in this repository are released under the MIT License. See [LICENSE](LICENSE).
+
+The MIT license does not grant rights to third-party datasets, generated journal metric data, publisher content, external API data, or source code from referenced projects. In particular:
+
+- JCR, CAS partition and warning-list data may have restrictive licensing or redistribution terms. Do not redistribute generated data unless you have the right to do so.
+- `journal-data.json` and `journal-metrics.full.user.js` can contain generated journal metric data. Treat those data portions separately from the MIT-licensed source code.
+- The script does not copy code from Sci-Hub Button, ShowJCR or EasyPubMed. They are acknowledged as references or data-format inspirations only.
+- External services such as Unpaywall, Crossref, OpenAlex, Semantic Scholar, NIH iCite, NCBI and PubPeer retain their own data licenses, terms and attribution requirements.
+
+This section is a practical project notice, not legal advice. If you redistribute a fork or a bundled data file, review the data sources and upstream licenses first.
 
 ## Acknowledgements
 
 This project was implemented with reference to:
 
-- [EasyPubMed](https://github.com/naivenaive/EasyPubMed): PubMed journal metrics UX, PubMed abbreviation mapping ideas and data-shaping references.
-- [ShowJCR](https://github.com/hitfyd/ShowJCR): JCR/CAS/warning CSV source format and local query model.
-- [Sci-Hub Button](https://greasyfork.org/zh-CN/scripts/370246-sci-hub-button): userscript pattern for opening a DOI/PMID through Sci-Hub.
-- [NIH iCite](https://icite.od.nih.gov/), [OpenAlex](https://openalex.org/) and [Semantic Scholar](https://www.semanticscholar.org/product/api): public citation-count sources used for the citation chip.
+- [EasyPubMed](https://github.com/naivenaive/EasyPubMed): PubMed journal metrics UX, PubMed abbreviation mapping ideas and data-shaping references. EasyPubMed is published with an MIT license.
+- [ShowJCR](https://github.com/hitfyd/ShowJCR): JCR/CAS/warning CSV source format and local query model. ShowJCR is published with a GPL-3.0 license, and its bundled data sources should be handled under their own terms.
+- [Sci-Hub Button](https://greasyfork.org/en/scripts/370246-sci-hub-button): userscript pattern for opening a DOI/PMID through Sci-Hub. Its Greasy Fork page lists license as `N/A`, so this project does not reuse its source code.
+- [Unpaywall](https://unpaywall.org/), [Crossref](https://www.crossref.org/), [OpenAlex](https://openalex.org/), [Semantic Scholar](https://www.semanticscholar.org/product/api), [NIH iCite](https://icite.od.nih.gov/), [NCBI E-Utilities](https://www.ncbi.nlm.nih.gov/books/NBK25501/) and [PubPeer](https://pubpeer.com/) for public metadata, OA, citation and discussion lookups.
 
 The implementation here is independent and scoped to this userscript.
