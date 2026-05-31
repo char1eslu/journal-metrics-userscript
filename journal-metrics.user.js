@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.6
+// @version      0.3.7
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -266,6 +266,7 @@
     if (!match) return "";
     return match[0]
       .replace(/^doi:\s*/i, "")
+      .replace(/[?#].*$/g, "")
       .replace(/[).,;]+$/g, "")
       .trim();
   }
@@ -384,6 +385,9 @@
     const doiLink = root.querySelector?.('a[href*="doi.org/10."], a[href*="/doi/10."], a[href*="dx.doi.org/10."]');
     const hrefDoi = normalizeDoi(doiLink?.href || "");
     if (hrefDoi) return hrefDoi;
+
+    const pageUrlDoi = root === document ? normalizeDoi(location.href) : "";
+    if (pageUrlDoi) return pageUrlDoi;
 
     const textDoi = normalizeDoi(root.textContent || "");
     return textDoi;
