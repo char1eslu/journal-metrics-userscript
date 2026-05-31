@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.8
+// @version      0.3.9
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -399,8 +399,13 @@
     return normalizePmid(root.querySelector?.(".docsum-pmid")?.textContent || "");
   }
 
+  function getDoiFromPath() {
+    const match = location.pathname.match(/\/doi\/(?:full\/|abs\/|abstract\/|epdf\/|pdf\/)?(10\.\d{4,9}\/.+)$/i);
+    return normalizeDoi(match?.[1] || "");
+  }
+
   function getScihubTarget(root = document) {
-    return getArticleDoi(root) || getPubmedId(root);
+    return getDoiFromPath() || getArticleDoi(root) || getPubmedId(root);
   }
 
   function buildScihubUrl(target) {
@@ -1764,6 +1769,7 @@
   function getGenericArticleQuery() {
     const jsonLd = getJsonLdArticleInfo();
     const visibleJournal = getVisibleJournalTitle();
+    const scienceJournal = getScienceJournalFromPath();
     const journal = getMetaContent(
       "citation_journal_title",
       "citation_journal_abbrev",
@@ -1779,11 +1785,25 @@
     const abbrev = getMetaContent("citation_journal_abbrev", "citation_journal_abbreviation");
     const issn = getMetaContent("citation_issn", "prism.issn", "dc.ISSN", "dc.issn", "eprints.issn");
     return {
-      journal: journal || jsonLd.journal || visibleJournal,
+      journal: journal || jsonLd.journal || scienceJournal || visibleJournal,
       abbrev,
       issn: issn || jsonLd.issn,
       aliases: [visibleJournal, getMetaContent("citation_publisher"), getMetaContent("prism.publisher")],
     };
+  }
+
+  function getScienceJournalFromPath() {
+    if (location.hostname !== "www.science.org" && location.hostname !== "science.org") return "";
+    const path = location.pathname.toLowerCase();
+    if (path.includes("/doi/") && path.includes("/sciadv.")) return "SCIENCE ADVANCES";
+    if (path.includes("/doi/") && path.includes("/science.")) return "SCIENCE";
+    return "";
+  }
+
+  function isScienceChallengePage() {
+    if (location.hostname !== "www.science.org" && location.hostname !== "science.org") return false;
+    return /just a moment/i.test(document.title || "")
+      || /^www\.science\.org$/i.test(document.querySelector("h1")?.textContent?.trim() || "");
   }
 
   function findGenericInsertTarget() {
@@ -1806,6 +1826,7 @@
 
   function processGenericArticlePage() {
     if (location.hostname === "pubmed.ncbi.nlm.nih.gov") return;
+    if (isScienceChallengePage()) return;
     if (isResultListPage()) return;
     if (document.querySelector("article.full-docsum, .docsum-content")) return;
 
