@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.24
+// @version      0.3.25
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @match        https://pubmed.ncbi.nlm.nih.gov/*
@@ -127,7 +127,7 @@
     citationsCacheKey: "journal-metrics:citations:v2",
     unpaywallCacheKey: "journal-metrics:unpaywall:v2",
     riskCacheKey: "journal-metrics:risk:v1",
-    crossrefCacheKey: "journal-metrics:crossref:v1",
+    crossrefCacheKey: "journal-metrics:crossref:v2",
     settingsKey: "journal-metrics:settings:v1",
     filterStateKey: "journal-metrics:filters:v1",
     unpaywallEmail: "char1eslu@users.noreply.github.com",
@@ -648,9 +648,24 @@
       doi,
       status,
       similarity: queryTitle ? titleSimilarity(queryTitle, title) : 0,
+      type: item?.type || "",
       source: "Crossref",
       time: Date.now(),
     };
+  }
+
+  function crossrefCandidateScore(info, queryTitle = "") {
+    if (!info?.doi) return -1;
+    const similarity = queryTitle ? titleSimilarity(queryTitle, info.title) : info.similarity || 0;
+    if (queryTitle && similarity < 0.72) return -1;
+    let score = similarity * 100;
+    if (info.type === "journal-article") score += 20;
+    if (info.type === "posted-content") score -= 30;
+    if (info.journal) score += 30;
+    if (normalizeIssn(info.issn)) score += 30;
+    if (/10\.1101|10\.21203|10\.2139|10\.20944/i.test(info.doi)) score -= 40;
+    if (/biorxiv|medrxiv|preprint|research square|ssrn/i.test(`${info.journal} ${info.title}`)) score -= 35;
+    return score;
   }
 
   async function fetchCrossrefByTitle(title) {
@@ -661,10 +676,15 @@
     const cached = cache[key];
     if (cached && Date.now() - cached.time < CONFIG.crossrefCacheMs) return cached;
 
-    const url = `https://api.crossref.org/works?query.title=${encodeURIComponent(cleanTitle)}&rows=1&select=DOI,title,container-title,short-container-title,ISSN,relation,URL,update-to,updated-by`;
+    const url = `https://api.crossref.org/works?query.title=${encodeURIComponent(cleanTitle)}&rows=5&select=DOI,title,container-title,short-container-title,ISSN,relation,URL,update-to,updated-by,type`;
     const data = await loadJsonViaGm(url);
-    const item = Array.isArray(data?.message?.items) ? data.message.items[0] : null;
-    const result = item ? getCrossrefSourceInfo(item, cleanTitle) : null;
+    const items = Array.isArray(data?.message?.items) ? data.message.items : [];
+    const candidates = items
+      .map((item) => getCrossrefSourceInfo(item, cleanTitle))
+      .map((info) => ({ info, score: crossrefCandidateScore(info, cleanTitle) }))
+      .filter((candidate) => candidate.score >= 0)
+      .sort((left, right) => right.score - left.score);
+    const result = candidates[0]?.info || null;
     cache[key] = result || { time: Date.now() };
     setCrossrefCache(cache);
     return result;
@@ -701,7 +721,7 @@
   function buildOpenAlexSearchUrl(title) {
     const cleanTitle = String(title || "").replace(/\s+/g, " ").trim();
     if (!cleanTitle) return "";
-    return `https://api.openalex.org/works?search=${encodeURIComponent(cleanTitle)}&select=id,doi,display_name,primary_location,locations,cited_by_count&per-page=1`;
+    return `https://api.openalex.org/works?search=${encodeURIComponent(cleanTitle)}&select=id,doi,display_name,primary_location,locations,cited_by_count&per-page=5`;
   }
 
   function getOpenAlexSourceInfo(work) {
@@ -722,12 +742,29 @@
     };
   }
 
+  function openAlexCandidateScore(info, queryTitle = "") {
+    if (!info) return -1;
+    const similarity = queryTitle ? titleSimilarity(queryTitle, info.title) : 0;
+    if (queryTitle && similarity < 0.72) return -1;
+    let score = similarity * 100;
+    if (info.journal) score += 30;
+    if (normalizeIssn(info.issn)) score += 30;
+    if (/10\.1101|10\.21203|10\.2139|10\.20944/i.test(info.doi)) score -= 40;
+    if (/biorxiv|medrxiv|preprint|research square|ssrn/i.test(`${info.journal} ${info.title}`)) score -= 35;
+    return score;
+  }
+
   async function fetchOpenAlexByTitle(title) {
     const url = buildOpenAlexSearchUrl(title);
     if (!url) return null;
     const data = await loadJsonViaGm(url);
-    const work = Array.isArray(data.results) ? data.results[0] : null;
-    return work ? getOpenAlexSourceInfo(work) : null;
+    const works = Array.isArray(data.results) ? data.results : [];
+    const candidates = works
+      .map((work) => getOpenAlexSourceInfo(work))
+      .map((info) => ({ info, score: openAlexCandidateScore(info, title) }))
+      .filter((candidate) => candidate.score >= 0)
+      .sort((left, right) => right.score - left.score);
+    return candidates[0]?.info || null;
   }
 
   function buildSemanticScholarUrl(target) {
@@ -1561,16 +1598,42 @@
       .trim();
   }
 
-  function getScholarCitedCount(result) {
-    const anchors = result.querySelectorAll("a");
-    for (const anchor of anchors) {
-      const text = (anchor.textContent || "").replace(/\s+/g, " ").trim();
-      const match = text.match(/(?:Cited by|被引用(?:次数)?\s*[:：]?)\s*([\d,]+)/i);
+  function parseScholarCitationText(text) {
+    const normalized = String(text || "")
+      .replace(/\u00a0/g, " ")
+      .replace(/，/g, ",")
+      .replace(/\s+/g, " ")
+      .trim();
+    const patterns = [
+      /\bCited by\s*([\d,]+)/i,
+      /被引用(?:次数)?\s*[:：]?\s*([\d,]+)/i,
+      /(?:^|\s)引用\s*[:：]?\s*([\d,]+)(?:\s|$)/i,
+    ];
+    for (const pattern of patterns) {
+      const match = normalized.match(pattern);
       if (!match) continue;
       const count = Number.parseInt(match[1].replace(/,/g, ""), 10);
       if (Number.isFinite(count)) return count;
     }
     return null;
+  }
+
+  function getScholarCitedCount(result) {
+    const anchors = result.querySelectorAll("a");
+    for (const anchor of anchors) {
+      const count = parseScholarCitationText(anchor.textContent || "");
+      if (Number.isFinite(count)) return count;
+    }
+    return parseScholarCitationText(result.textContent || "");
+  }
+
+  function scholarCitationResult(result) {
+    const parsed = getScholarCitedCount(result);
+    const stored = Number.parseInt(result?.dataset?.pjmScholarCited || "", 10);
+    const count = Number.isFinite(parsed) ? parsed : stored;
+    if (!Number.isFinite(count)) return null;
+    result.dataset.pjmScholarCited = String(count);
+    return { count, source: "Google Scholar" };
   }
 
   async function hydrateScholarResultFromOpenAlex(result, targetNode, metrics, title, scihubTarget) {
@@ -1583,8 +1646,7 @@
       const { record, match } = lookup;
       const resolvedTarget = info.doi || scihubTarget;
       if (!record && !resolvedTarget) return;
-      const scholarCited = getScholarCitedCount(result);
-      const citationResult = Number.isFinite(scholarCited) ? { count: scholarCited, source: "Google Scholar" } : null;
+      const citationResult = scholarCitationResult(result);
       if (metrics) {
         updateMetrics(metrics, record, { scihubTarget: resolvedTarget, citationResult, match, root: result });
       } else {
@@ -1595,19 +1657,23 @@
     }
   }
 
-  async function hydrateResultFromCrossref(container, targetNode, metrics, title, currentTarget = "", currentRecord = null, currentMatch = null) {
-    if (!title || normalizeDoi(currentTarget) || container.dataset.pjmCrossrefHydrated === "1") return;
+  async function hydrateResultFromCrossref(container, targetNode, metrics, title, currentTarget = "", currentRecord = null, currentMatch = null, currentCitationResult = null) {
+    const currentDoi = normalizeDoi(currentTarget);
+    if ((!title && !currentDoi) || (currentDoi && currentRecord) || container.dataset.pjmCrossrefHydrated === "1") return;
     container.dataset.pjmCrossrefHydrated = "1";
     try {
-      const info = await fetchCrossrefByTitle(title);
-      if (!info || !info.doi || info.similarity < 0.82) return;
+      const info = currentDoi ? await fetchCrossrefByDoi(currentDoi) : await fetchCrossrefByTitle(title);
+      if (!info || !info.doi) return;
+      if (!currentDoi && info.similarity < 0.82) return;
       const lookup = lookupJournalWithMatch({ journal: info.journal, issn: info.issn, aliases: [info.journal] });
       const record = lookup.record || currentRecord;
       const match = lookup.match || currentMatch;
-      if (!record && !info.doi) return;
+      const resolvedDoi = info.doi || currentDoi;
+      if (!record && !resolvedDoi) return;
       const options = {
-        scihubTarget: info.doi,
-        citationTarget: info.doi,
+        scihubTarget: resolvedDoi,
+        citationTarget: resolvedDoi,
+        citationResult: currentCitationResult,
         statuses: info.status,
         statusSource: "Crossref",
         match,
@@ -2079,7 +2145,7 @@
 
   function insertMetrics(target, record, options = {}) {
     if (!target || target.querySelector?.(`.${BADGE_CLASS}`)) return;
-    if (!record && !options.scihubTarget && !options.citationTarget) return;
+    if (!record && !options.scihubTarget && !options.citationTarget && !options.citationResult) return;
     const wrapper = document.createElement(options.inline ? "span" : "div");
     wrapper.innerHTML = renderMetrics(record, options);
     const metrics = wrapper.firstElementChild;
@@ -2103,11 +2169,21 @@
 
   function updateMetrics(metrics, record, options = {}) {
     if (!metrics) return;
+    let resolvedRecord = record;
+    let resolvedMatch = options.match;
+    if (!resolvedRecord && metrics.dataset.pjmRecord) {
+      try {
+        resolvedRecord = JSON.parse(metrics.dataset.pjmRecord);
+        resolvedMatch = resolvedMatch || (metrics.dataset.pjmMatch ? JSON.parse(metrics.dataset.pjmMatch) : null);
+      } catch {
+        resolvedRecord = record;
+      }
+    }
     const wrapper = document.createElement("div");
-    wrapper.innerHTML = renderMetrics(record, options);
+    wrapper.innerHTML = renderMetrics(resolvedRecord, { ...options, match: resolvedMatch });
     const next = wrapper.firstElementChild;
     if (!next) return;
-    annotateMetrics(next, record, options.scihubTarget || options.citationTarget, options);
+    annotateMetrics(next, resolvedRecord, options.scihubTarget || options.citationTarget, { ...options, match: resolvedMatch });
     metrics.replaceWith(next);
     next.addEventListener("click", handleMetricsClick);
     hydrateCitationChips(options.root || document);
@@ -2802,12 +2878,11 @@
       result.dataset.pjmProcessed = "1";
       const target = result.querySelector(".gs_ri") || result;
       ensureScholarSelection(result, target);
-      const scholarCited = getScholarCitedCount(result);
-      const citationResult = Number.isFinite(scholarCited) ? { count: scholarCited, source: "Google Scholar" } : null;
+      const citationResult = scholarCitationResult(result);
       insertMetrics(target, record, { scihubTarget: doi, citationResult, match });
       const metrics = target.querySelector(`.${BADGE_CLASS}`);
       hydrateScholarResultFromOpenAlex(result, target, metrics, title, doi);
-      hydrateResultFromCrossref(result, target, metrics, title, doi, record, match);
+      hydrateResultFromCrossref(result, target, metrics, title, doi, record, match, citationResult);
     }
   }
 
