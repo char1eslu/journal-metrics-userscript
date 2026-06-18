@@ -140,7 +140,7 @@ The data schema supports:
       "journal": "LANCET",
       "aliases": ["Lancet", "The Lancet"],
       "issn": ["0140-6736", "1474-547X"],
-      "if": "98.4",
+      "if": "88.5",
       "jcr": "Q1",
       "cas": "1",
       "casCategory": "医学",
