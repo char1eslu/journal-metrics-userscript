@@ -1,5 +1,5 @@
 {
-  "updated": "2026-06-15",
+  "updated": "2026-06-22",
   "note": "Ordered candidate Sci-Hub domains used by the userscript. The script opens the first domain and falls back to embedded domains if this file cannot be loaded. Discovery sources are scraped for sci-hub.* candidates, then candidates are probed and reachable domains are kept first.",
   "sources": [
     "https://lovescihub.wordpress.com",
@@ -35,6 +35,6 @@
     "https://sci-hub.al": 200,
     "https://sci-hub.mk": 200,
     "https://sci-hub.vg": 200,
-    "https://sci-hub.st": 200
+    "https://sci-hub.st": null
   }
 }
