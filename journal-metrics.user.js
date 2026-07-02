@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.29
+// @version      0.3.30
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @license      MIT
@@ -143,15 +143,15 @@
     fallbackData: {
       meta: {
         name: "Journal Metrics sample data",
-        updated: "2026-05-30",
+        updated: "2026-07-02",
         source: "Sample records. Replace CONFIG.dataUrl with a full generated JSON file.",
       },
       journals: [
         {
           journal: "NATURE REVIEWS NEPHROLOGY",
-          aliases: ["Nat Rev Nephrol", "Nature reviews nephrology"],
+          aliases: ["Nat Rev Nephrol", "Nature reviews. Nephrology"],
           issn: ["1759-5061", "1759-507X"],
-          if: "34.5",
+          if: "46.7",
           jcr: "Q1",
           cas: "1",
           casCategory: "医学",
@@ -161,9 +161,9 @@
         },
         {
           journal: "JOURNAL OF THE AMERICAN SOCIETY OF NEPHROLOGY",
-          aliases: ["J Am Soc Nephrol", "Journal of the American Society of Nephrology"],
+          aliases: ["J Am Soc Nephrol", "Journal of the American Society of Nephrology : JASN"],
           issn: ["1046-6673", "1533-3450"],
-          if: "14.8",
+          if: "9.7",
           jcr: "Q1",
           cas: "1",
           casCategory: "医学",
@@ -173,9 +173,9 @@
         },
         {
           journal: "LANCET",
-          aliases: ["Lancet", "The Lancet"],
+          aliases: ["Lancet (London, England)"],
           issn: ["0140-6736", "1474-547X"],
-          if: "98.4",
+          if: "109",
           jcr: "Q1",
           cas: "1",
           casCategory: "医学",
@@ -185,9 +185,9 @@
         },
         {
           journal: "BRITISH POULTRY SCIENCE",
-          aliases: ["Br Poult Sci", "British poultry science"],
+          aliases: ["Br Poult Sci"],
           issn: ["0007-1668", "1466-1799"],
-          if: "1.8",
+          if: "1.7",
           jcr: "Q3",
           cas: "4",
           casCategory: "农林科学",

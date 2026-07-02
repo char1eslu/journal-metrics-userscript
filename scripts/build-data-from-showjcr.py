@@ -2,7 +2,7 @@
 """Build a compact journal metrics JSON file from ShowJCR CSV exports.
 
 Expected inputs are the CSV files distributed with ShowJCR:
-- JCR2024-UTF8.csv
+- JCR2025-UTF8.csv
 - FQBJCR2025-UTF8.csv
 - GJQKYJMD2025.csv
 
@@ -21,6 +21,7 @@ import csv
 import json
 import re
 from collections import OrderedDict
+from datetime import date
 from pathlib import Path
 
 
@@ -52,6 +53,46 @@ def read_csv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
+def latest_csv(path: Path, prefix: str) -> Path:
+    candidates = []
+    pattern = f"{prefix}*.csv" if prefix == "GJQKYJMD" else f"{prefix}*-UTF8.csv"
+    for item in path.glob(pattern):
+        match = re.search(r"(\d{4})", item.name)
+        if match:
+            candidates.append((int(match.group(1)), item))
+    if not candidates:
+        raise FileNotFoundError(f"No {prefix} CSV files found in {path}")
+    return max(candidates)[1]
+
+
+def source_label(path: Path) -> str:
+    return re.sub(r"-UTF8\.csv$|\.csv$", "", path.name)
+
+
+def row_value(row: dict[str, str], *names: str) -> str:
+    for name in names:
+        if name in row:
+            return row.get(name, "")
+    lowered = {key.casefold(): key for key in row}
+    for name in names:
+        key = lowered.get(name.casefold())
+        if key:
+            return row.get(key, "")
+    return ""
+
+
+def best_quartile(values: list[str]) -> str:
+    priority = {"Q1": 1, "Q2": 2, "Q3": 3, "Q4": 4, "N/A": 5}
+    clean = [value.strip().upper() for value in values if value and value.strip()]
+    if not clean:
+        return ""
+    return min(clean, key=lambda value: priority.get(value, 99))
+
+
+def better_quartile(new: str, current: str) -> str:
+    return best_quartile([new, current])
+
+
 def ensure_record(records: OrderedDict[str, dict], journal: str) -> dict:
     key = norm_journal(journal)
     if key not in records:
@@ -76,18 +117,27 @@ def merge_jcr(records: OrderedDict[str, dict], path: Path) -> None:
         if not journal:
             continue
         record = ensure_record(records, journal)
-        record["issn"] = sorted(set(record["issn"]) | set(split_issns(row.get("ISSN", ""))) | set(split_issns(row.get("eISSN", ""))))
+        record["issn"] = sorted(
+            set(record["issn"])
+            | set(split_issns(row_value(row, "ISSN")))
+            | set(split_issns(row_value(row, "eISSN", "EISSN")))
+        )
 
-        impact = row.get("IF(2024)", "").strip()
-        quartile = row.get("IF Quartile(2024)", "").strip().upper()
+        impact = next(
+            (value.strip() for key, value in row.items() if re.fullmatch(r"IF\(\d{4}\)", key or "") and value.strip()),
+            "",
+        )
+        quartile = best_quartile([
+            value
+            for key, value in row.items()
+            if re.fullmatch(r"IF Quartile\(\d{4}\)(?:_\d+)?", key or "")
+        ])
         if impact and not record["if"]:
             record["if"] = impact
 
         # JCR can contain several categories per journal. Use the best quartile.
         if quartile:
-            current = record["jcr"]
-            if not current or quartile < current:
-                record["jcr"] = quartile
+            record["jcr"] = better_quartile(quartile, record["jcr"])
 
 
 def merge_cas(records: OrderedDict[str, dict], path: Path) -> None:
@@ -159,18 +209,22 @@ def prune_empty(record: dict) -> dict:
 
 def build_data(showjcr_dir: Path, pubmed_abb: Path | None = None) -> dict:
     records: OrderedDict[str, dict] = OrderedDict()
-    merge_jcr(records, showjcr_dir / "JCR2024-UTF8.csv")
-    merge_cas(records, showjcr_dir / "FQBJCR2025-UTF8.csv")
-    merge_warning(records, showjcr_dir / "GJQKYJMD2025.csv")
+    jcr_path = latest_csv(showjcr_dir, "JCR")
+    cas_path = latest_csv(showjcr_dir, "FQBJCR")
+    warning_path = latest_csv(showjcr_dir, "GJQKYJMD")
+    merge_jcr(records, jcr_path)
+    merge_cas(records, cas_path)
+    merge_warning(records, warning_path)
     merge_pubmed_aliases(records, pubmed_abb)
 
     journals = [prune_empty(record) for record in records.values()]
     journals.sort(key=lambda item: item["journal"])
+    sources = ", ".join(source_label(path) for path in (jcr_path, cas_path, warning_path))
     return {
         "meta": {
             "name": "Journal Metrics data",
-            "updated": "2026-05-30",
-            "source": "Generated from ShowJCR CSV files: JCR2024, FQBJCR2025, GJQKYJMD2025.",
+            "updated": date.today().isoformat(),
+            "source": f"Generated from ShowJCR CSV files: {sources}.",
         },
         "journals": journals,
     }

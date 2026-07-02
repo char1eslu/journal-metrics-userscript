@@ -133,14 +133,14 @@ The data schema supports:
 ```json
 {
   "meta": {
-    "updated": "2026-05-30"
+    "updated": "2026-07-02"
   },
   "journals": [
     {
       "journal": "LANCET",
-      "aliases": ["Lancet", "The Lancet"],
+      "aliases": ["Lancet (London, England)"],
       "issn": ["0140-6736", "1474-547X"],
-      "if": "88.5",
+      "if": "109",
       "jcr": "Q1",
       "cas": "1",
       "casCategory": "医学",
