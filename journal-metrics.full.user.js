@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Journal Metrics for Academic Sites
 // @namespace    https://pubmed.ncbi.nlm.nih.gov/
-// @version      0.3.30
+// @version      0.3.31
 // @description  Show journal impact factor, JCR quartile, CAS partition, citations, Unpaywall and Sci-Hub entries on academic pages.
 // @author       charles_lu
 // @license      MIT
@@ -43,6 +43,7 @@
 // @match        https://ieeexplore.ieee.org/document/*
 // @match        https://acsjournals.onlinelibrary.wiley.com/doi/*
 // @match        https://pubs.acs.org/doi/*
+// @match        https://pubs.acs.org/*/article/doi/*
 // @match        https://pubs.rsc.org/*
 // @match        https://pubs.aip.org/*/article/*
 // @match        https://www.tandfonline.com/doi/*
